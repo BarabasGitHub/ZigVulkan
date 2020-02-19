@@ -154,3 +154,4 @@ test "Creating a debug callback should succeed" {
     testing.expectEqual(@as(u32, 1), user_data);
     destroyInstance(instance, null);
 }
+
