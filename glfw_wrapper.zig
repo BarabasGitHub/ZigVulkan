@@ -71,3 +71,17 @@ test "Creating a zero size window must fail" {
     defer deinit();
     testing.expectError(error.GlfwInvalidValue, createWindow(0, 0, "test"));
 }
+
+// the returned slice is owned by glfw
+pub fn getRequiredInstanceExtensions() ![]const[*:0]const u8 {
+    var glfwExtensionCount : u32 = 0;
+    const extensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+    try getGlfwError();
+    return extensions[0..glfwExtensionCount];
+}
+
+test "Getting the required instance extentions should return at least one extension" {
+    try init();
+    defer deinit();
+    testing.expect((try getRequiredInstanceExtensions()).len > 0);
+}

@@ -1,5 +1,7 @@
-const glfw_vulkan = @import("GLFW_and_Vulkan.zig");
+const vulkan_c = @import("GLFW_and_Vulkan.zig");
+const glfw_c = vulkan_c;
 const builtin = @import("builtin");
+const glfw = @import("glfw_wrapper.zig");
 
 const Version = struct {
     major: u8,
@@ -7,7 +9,7 @@ const Version = struct {
     patch: u8,
 };
 
-fn checkVulkanResult(result: glfw_vulkan.VkResult) !void {
+fn checkVulkanResult(result: vulkan_c.VkResult) !void {
     return switch(result) {
         .VK_SUCCESS => void{},
         .VK_NOT_READY => error.VkNotReady,
@@ -55,19 +57,19 @@ const USE_DEBUG_TOOLS = builtin.mode == builtin.Mode.Debug or builtin.mode == bu
 
 const validation_layers : []const []const u8 = if (comptime USE_DEBUG_TOOLS) &[_][]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
 
-fn createInstance(application_name: [*:0]const u8, application_version: Version, engine_name: [*:0]const u8, engine_version: Version, extentions: []const [*:0]const u8) !glfw_vulkan.VkInstance {
-    const app_info = glfw_vulkan.VkApplicationInfo{
-        .sType=glfw_vulkan.enum_VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO,
+fn createInstance(application_name: [*:0]const u8, application_version: Version, engine_name: [*:0]const u8, engine_version: Version, extentions: []const [*:0]const u8) !vulkan_c.VkInstance {
+    const app_info = vulkan_c.VkApplicationInfo{
+        .sType=vulkan_c.enum_VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext=null,
         .pApplicationName="test_name",
-        .applicationVersion=glfw_vulkan.VK_MAKE_VERSION(0, 0, 0),
+        .applicationVersion=vulkan_c.VK_MAKE_VERSION(0, 0, 0),
         .pEngineName="test_engine",
-        .engineVersion=glfw_vulkan.VK_MAKE_VERSION(0, 0, 0),
-        .apiVersion=glfw_vulkan.VK_API_VERSION_1_0,
+        .engineVersion=vulkan_c.VK_MAKE_VERSION(0, 0, 0),
+        .apiVersion=vulkan_c.VK_API_VERSION_1_0,
     };
 
-    const createInfo = glfw_vulkan.VkInstanceCreateInfo{
-        .sType=glfw_vulkan.VkStructureType.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+    const createInfo = vulkan_c.VkInstanceCreateInfo{
+        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
         .pNext=null,
         .pApplicationInfo=&app_info,
         .enabledExtensionCount=@intCast(u32, extentions.len),
@@ -76,16 +78,16 @@ fn createInstance(application_name: [*:0]const u8, application_version: Version,
         .enabledLayerCount=@intCast(u32, validation_layers.len),
         .ppEnabledLayerNames=@ptrCast([*c]const [*c]const u8, validation_layers.ptr),
     };
-    var instance: glfw_vulkan.VkInstance = undefined;
-    try checkVulkanResult(glfw_vulkan.vkCreateInstance(&createInfo, null, &instance));
+    var instance: vulkan_c.VkInstance = undefined;
+    try checkVulkanResult(vulkan_c.vkCreateInstance(&createInfo, null, &instance));
     return instance;
 }
 
-const destroyInstance = glfw_vulkan.vkDestroyInstance;
+const destroyInstance = vulkan_c.vkDestroyInstance;
 
 const testing = @import("std").testing;
 
-fn createTestInstance(extentions: []const [*:0]const u8) !glfw_vulkan.VkInstance {
+fn createTestInstance(extentions: []const [*:0]const u8) !vulkan_c.VkInstance {
     return try createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extentions);
 }
 
@@ -98,29 +100,29 @@ test "Creating a Vulkan instance without non-existing extentions should fail wit
     testing.expectError(error.VkErrorExtensionNotPresent, createTestInstance(&[_][*:0]const u8{"non-existing extention"}));
 }
 
-fn createDebugCallback(instance: glfw_vulkan.VkInstance, user_callback: @typeInfo(glfw_vulkan.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: var) !glfw_vulkan.VkDebugReportCallbackEXT {
+fn createDebugCallback(instance: vulkan_c.VkInstance, user_callback: @typeInfo(vulkan_c.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: var) !vulkan_c.VkDebugReportCallbackEXT {
     return try createDebugCallbackWithCanFail(instance, user_callback, user_data);
 }
 
-fn createDebugCallbackWithCanFail(instance: glfw_vulkan.VkInstance, user_callback: glfw_vulkan.PFN_vkDebugReportCallbackEXT, user_data: var) !glfw_vulkan.VkDebugReportCallbackEXT {
-    var createInfo = glfw_vulkan.VkDebugReportCallbackCreateInfoEXT{
-        .sType=glfw_vulkan.VkStructureType.VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
+fn createDebugCallbackWithCanFail(instance: vulkan_c.VkInstance, user_callback: vulkan_c.PFN_vkDebugReportCallbackEXT, user_data: var) !vulkan_c.VkDebugReportCallbackEXT {
+    var createInfo = vulkan_c.VkDebugReportCallbackCreateInfoEXT{
+        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
         .pNext=null,
         .pUserData=user_data,
         .flags=0
-        | glfw_vulkan.VK_DEBUG_REPORT_ERROR_BIT_EXT
-        | glfw_vulkan.VK_DEBUG_REPORT_WARNING_BIT_EXT,
+        | vulkan_c.VK_DEBUG_REPORT_ERROR_BIT_EXT
+        | vulkan_c.VK_DEBUG_REPORT_WARNING_BIT_EXT,
         .pfnCallback=user_callback,
     };
     if (USE_DEBUG_TOOLS) {
         createInfo.flags = createInfo.flags
-        | @as(u32, glfw_vulkan.VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
-        | @as(u32, glfw_vulkan.VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
-        | @as(u32, glfw_vulkan.VK_DEBUG_REPORT_DEBUG_BIT_EXT)
+        | @as(u32, vulkan_c.VK_DEBUG_REPORT_PERFORMANCE_WARNING_BIT_EXT)
+        | @as(u32, vulkan_c.VK_DEBUG_REPORT_INFORMATION_BIT_EXT)
+        | @as(u32, vulkan_c.VK_DEBUG_REPORT_DEBUG_BIT_EXT)
         ;
     }
-    var callback : glfw_vulkan.VkDebugReportCallbackEXT = undefined;
-    const func = @ptrCast(glfw_vulkan.PFN_vkCreateDebugReportCallbackEXT, glfw_vulkan.vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
+    var callback : vulkan_c.VkDebugReportCallbackEXT = undefined;
+    const func = @ptrCast(vulkan_c.PFN_vkCreateDebugReportCallbackEXT, vulkan_c.vkGetInstanceProcAddr(instance, "vkCreateDebugReportCallbackEXT"));
     if (func) |f| {
         try checkVulkanResult(f(instance, &createInfo, null, &callback));
     }
@@ -131,19 +133,19 @@ fn createDebugCallbackWithCanFail(instance: glfw_vulkan.VkInstance, user_callbac
     return callback;
 }
 
-fn destroyDebugCallback(instance: glfw_vulkan.VkInstance, callback: glfw_vulkan.VkDebugReportCallbackEXT) void {
-    if (@ptrCast(glfw_vulkan.PFN_vkDestroyDebugReportCallbackEXT, glfw_vulkan.vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"))) |func| {
+fn destroyDebugCallback(instance: vulkan_c.VkInstance, callback: vulkan_c.VkDebugReportCallbackEXT) void {
+    if (@ptrCast(vulkan_c.PFN_vkDestroyDebugReportCallbackEXT, vulkan_c.vkGetInstanceProcAddr(instance, "vkDestroyDebugReportCallbackEXT"))) |func| {
         func(instance, callback, null);
     }
 }
 
-fn debugCallback(flags: glfw_vulkan.VkDebugReportFlagsEXT, object_type: glfw_vulkan.VkDebugReportObjectTypeEXT, object: u64, location: usize, message_code: i32, layer_prefix: [*c]const u8, message: [*c]const u8, user_data: ?*c_void) callconv(.C) glfw_vulkan.VkBool32 {
+fn debugCallback(flags: vulkan_c.VkDebugReportFlagsEXT, object_type: vulkan_c.VkDebugReportObjectTypeEXT, object: u64, location: usize, message_code: i32, layer_prefix: [*c]const u8, message: [*c]const u8, user_data: ?*c_void) callconv(.C) vulkan_c.VkBool32 {
     @ptrCast(*u32, @alignCast(@alignOf(u32), user_data)).* += 1;
     return @boolToInt(false);
 }
 
 test "Creating a debug callback should succeed" {
-    var instance = try createTestInstance(&[_][*:0]const u8{glfw_vulkan.VK_EXT_DEBUG_REPORT_EXTENSION_NAME});
+    var instance = try createTestInstance(&[_][*:0]const u8{vulkan_c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME});
     // setup callback with user data
     var user_data : u32 = 0;
     const callback = try createDebugCallback(instance, debugCallback, &user_data);
@@ -155,3 +157,24 @@ test "Creating a debug callback should succeed" {
     destroyInstance(instance, null);
 }
 
+pub fn createSurface(instance: vulkan_c.VkInstance, window: *vulkan_c.GLFWwindow) !vulkan_c.VkSurfaceKHR {
+    var surface: vulkan_c.VkSurfaceKHR = undefined;
+    try checkVulkanResult(glfw_c.glfwCreateWindowSurface(instance, window, null, &surface));
+    return surface;
+}
+
+test "Creating a surface should succeed" {
+    try glfw.init();
+    defer glfw.deinit();
+    const window = try glfw.createWindow(10, 10, "");
+    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+    const surface = try createSurface(instance, window);
+}
+
+test "Creating a surface without the required instance extentions should fail" {
+    try glfw.init();
+    defer glfw.deinit();
+    const window = try glfw.createWindow(10, 10, "");
+    const instance = try createTestInstance(&[_][*:0]const u8{});
+    testing.expectError(error.VkErrorExtensionNotPresent, createSurface(instance, window));
+}
