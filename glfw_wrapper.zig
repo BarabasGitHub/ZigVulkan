@@ -60,10 +60,13 @@ pub fn createWindow(width: u31, height: u31, title: [*:0]const u8) !*GLFWwindow 
     }
 }
 
+pub const destroyWindow = glfwDestroyWindow;
+
 test "Creating a window must succeed" {
     try init();
     defer deinit();
     const window = try createWindow(10, 10, "test");
+    destroyWindow(window);
 }
 
 test "Creating a zero size window must fail" {
