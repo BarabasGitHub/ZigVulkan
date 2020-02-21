@@ -1,43 +1,43 @@
-const builtin = @import("builtin");
 const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
+const glfw = @import("glfw_wrapper.zig");
 
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_general.zig");
 
 pub const Window = struct{
     handle: *glfw.GLFWwindow,
-    surface: vulkan_c.VkSurfaceKHR,
+    surface: Vk.c.VkSurfaceKHR,
 
-    pub fn init(width: u31, height: u31, title: [*:0]const u8, instance: vulkan_c.VkInstance) !Window {
+    pub fn init(width: u31, height: u31, title: [*:0]const u8, instance: Vk.c.VkInstance) !Window {
         var window: Window = undefined;
         window.handle = try glfw.createWindow(width, height, title);
         window.surface = try createSurface(instance, window.handle);
         return window;
     }
 
-    pub fn deinit(self: Window, instance: vulkan_c.VkInstance) void {
+    pub fn deinit(self: Window, instance: Vk.c.VkInstance) void {
         destroySurface(instance, self.surface);
         glfw.destroyWindow(self.handle);
     }
 
-    pub fn getSize(self: Window) !vulkan_c.VkExtent2D {
+    pub fn getSize(self: Window) !Vk.c.VkExtent2D {
         var width : i32 = undefined;
         var height : i32 = undefined;
         try glfw.getWindowSize(self.handle, &width, &height);
-        return vulkan_c.VkExtent2D{.width=@intCast(u32, width), .height=@intCast(u32, height)};
+        return Vk.c.VkExtent2D{.width=@intCast(u32, width), .height=@intCast(u32, height)};
     }
 };
 
-pub fn createSurface(instance: vulkan_c.VkInstance, window: *vulkan_c.GLFWwindow) !vulkan_c.VkSurfaceKHR {
-    var surface: vulkan_c.VkSurfaceKHR = undefined;
-    try checkVulkanResult(glfw_c.glfwCreateWindowSurface(instance, window, null, &surface));
+pub fn createSurface(instance: Vk.c.VkInstance, window: *Vk.c.GLFWwindow) !Vk.c.VkSurfaceKHR {
+    var surface: Vk.c.VkSurfaceKHR = undefined;
+    try checkVulkanResult(glfw.c.glfwCreateWindowSurface(instance, window, null, &surface));
     return surface;
 }
 
-pub fn destroySurface(instance: vulkan_c.VkInstance, surface: vulkan_c.VkSurfaceKHR) void {
-    vulkan_c.vkDestroySurfaceKHR(instance, surface, null);
+pub fn destroySurface(instance: Vk.c.VkInstance, surface: Vk.c.VkSurfaceKHR) void {
+    Vk.c.vkDestroySurfaceKHR(instance, surface, null);
 }
 
 test "Creating a surface should succeed" {
@@ -81,6 +81,6 @@ test "getting the size of the window should work" {
     const window = try Window.init(width, height, "", instance);
     defer window.deinit(instance);
 
-    testing.expectEqual(vulkan_c.VkExtent2D{.width=width, .height=height}, try window.getSize());
+    testing.expectEqual(Vk.c.VkExtent2D{.width=width, .height=height}, try window.getSize());
 
 }

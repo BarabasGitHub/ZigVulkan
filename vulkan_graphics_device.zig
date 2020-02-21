@@ -1,35 +1,35 @@
-const builtin = @import("builtin");
 const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
+const glfw = @import("glfw_wrapper.zig");
 
 usingnamespace @import("vulkan_general.zig");
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("glfw_vulkan_window.zig");
 
 // the caller owns the returned memory and is responsible for freeing it.
-fn getPhysicalDeviceQueueFamiliyPropeties(device: vulkan_c.VkPhysicalDevice, allocator: *mem.Allocator) ![]vulkan_c.VkQueueFamilyProperties {
+fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) ![]Vk.c.VkQueueFamilyProperties {
     var queue_family_count : u32 = undefined;
-    vulkan_c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
-    const queue_familiy_properties = try allocator.alloc(vulkan_c.VkQueueFamilyProperties, queue_family_count);
-    vulkan_c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_familiy_properties.ptr);
+    Vk.c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
+    const queue_familiy_properties = try allocator.alloc(Vk.c.VkQueueFamilyProperties, queue_family_count);
+    Vk.c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_familiy_properties.ptr);
     return queue_familiy_properties;
 }
 
-fn findGraphicsFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) ?u16 {
+fn findGraphicsFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
     for (queue_familiy_properties) |properties, i| {
-        if (queue_familiy_properties[i].queueCount > 0 and (queue_familiy_properties[i].queueFlags & @as(u32, vulkan_c.VK_QUEUE_GRAPHICS_BIT)) != 0) {
+        if (queue_familiy_properties[i].queueCount > 0 and (queue_familiy_properties[i].queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT)) != 0) {
             return @intCast(u16, i);
         }
     }
     return null;
 }
 
-fn findPresentFamilyQueue(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) !?u16 {
+fn findPresentFamilyQueue(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) !?u16 {
     var present_family: ?u16 = null;
     for (queue_familiy_properties) |properties, i| {
         var present_support : u32 = undefined;
-        try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(u32, i), surface, &present_support));
+        try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(u32, i), surface, &present_support));
         if (properties.queueCount > 0 and present_support != 0) {
             return @intCast(u16, i);
         }
@@ -37,57 +37,57 @@ fn findPresentFamilyQueue(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.V
     return null;
 }
 
-fn hasSuitableDeviceQueueFamilies(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
+fn hasSuitableDeviceQueueFamilies(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
     const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(device, allocator);
     defer allocator.free(queue_familiy_properties);
     return findGraphicsFamilyQueue(queue_familiy_properties) != null and (try findPresentFamilyQueue(device, surface, queue_familiy_properties)) != null;
 }
 
-fn containsSwapChainExtension(available_extensions: []const vulkan_c.VkExtensionProperties) bool {
+fn containsSwapChainExtension(available_extensions: []const Vk.c.VkExtensionProperties) bool {
     for (available_extensions) |extension| {
-        if (std.cstr.cmp(@ptrCast([*:0]const u8, &extension.extensionName), vulkan_c.VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
+        if (std.cstr.cmp(@ptrCast([*:0]const u8, &extension.extensionName), Vk.c.VK_KHR_SWAPCHAIN_EXTENSION_NAME) == 0) {
             return true;
         }
     }
     return false;
 }
 
-fn hasAdequateSwapChain(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
+fn hasAdequateSwapChain(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
     var extension_count : u32 = undefined;
-    try checkVulkanResult(vulkan_c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null));
-    const available_extensions = try allocator.alloc(vulkan_c.VkExtensionProperties, extension_count);
+    try checkVulkanResult(Vk.c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null));
+    const available_extensions = try allocator.alloc(Vk.c.VkExtensionProperties, extension_count);
     defer allocator.free(available_extensions);
-    try checkVulkanResult(vulkan_c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, available_extensions.ptr));
+    try checkVulkanResult(Vk.c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, available_extensions.ptr));
     if (containsSwapChainExtension(available_extensions)) {
-        var capabilities: vulkan_c.VkSurfaceCapabilitiesKHR = undefined;
-        try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities));
+        var capabilities: Vk.c.VkSurfaceCapabilitiesKHR = undefined;
+        try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities));
         var surface_format_count : u32 = undefined;
-        try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null));
+        try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null));
         var present_mode_count: u32 = undefined;
-        try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null));
+        try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null));
         return surface_format_count > 0 and present_mode_count > 0;
     }
     return false;
 }
 
-fn isDeviceSuitableForGraphicsAndPresentation(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
-    var deviceProperties: vulkan_c.VkPhysicalDeviceProperties = undefined;
-    vulkan_c.vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    var deviceFeatures : vulkan_c.VkPhysicalDeviceFeatures = undefined;
-    vulkan_c.vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
+fn isDeviceSuitableForGraphicsAndPresentation(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
+    var deviceProperties: Vk.c.VkPhysicalDeviceProperties = undefined;
+    Vk.c.vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    var deviceFeatures : Vk.c.VkPhysicalDeviceFeatures = undefined;
+    Vk.c.vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
     return (try hasSuitableDeviceQueueFamilies(device, surface, allocator)) and hasAdequateSwapChain(device, surface, allocator);
 }
 
-pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: vulkan_c.VkInstance, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !std.meta.Child(vulkan_c.VkPhysicalDevice) {
+pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: Vk.c.VkInstance, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator) !Vk.PhysicalDevice {
     var device_count : u32 = 0;
-    try checkVulkanResult(vulkan_c.vkEnumeratePhysicalDevices(instance, &device_count, null));
+    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, null));
     if (device_count == 0) {
         return error.NoDeviceWithVulkanSupportFound;
     }
-    const devices = try allocator.alloc(std.meta.Child(vulkan_c.VkPhysicalDevice), device_count);
+    const devices = try allocator.alloc(Vk.PhysicalDevice, device_count);
     defer allocator.free(devices);
-    try checkVulkanResult(vulkan_c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*c]vulkan_c.VkPhysicalDevice, devices.ptr)));
+    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*c]Vk.c.VkPhysicalDevice, devices.ptr)));
     for (devices) |device| {
         if (try isDeviceSuitableForGraphicsAndPresentation(device, surface, allocator)) {
             return device;
@@ -107,15 +107,15 @@ test "finding a physical device suitable for graphics and presenting should succ
 }
 
 const Queues = struct {
-    graphics: std.meta.Child(vulkan_c.VkQueue),
+    graphics: std.meta.Child(Vk.c.VkQueue),
     graphics_index: u16,
-    present: std.meta.Child(vulkan_c.VkQueue),
+    present: std.meta.Child(Vk.c.VkQueue),
     present_index: u16,
-    transfer: std.meta.Child(vulkan_c.VkQueue),
+    transfer: std.meta.Child(Vk.c.VkQueue),
     transfer_index: u16,
 };
 
-fn findTransferFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) ?u16 {
+fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
     var transfer_family: ?u16 = null;
     for (queue_familiy_properties) |properties, i| {
         // ----------------------------------------------------------
@@ -124,26 +124,26 @@ fn findTransferFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFam
         // separately for that queue family is optional
         // ----------------------------------------------------------
         // Thus we check if it has any of these capabilities and prefer a dedicated one
-        if (properties.queueCount > 0 and (properties.queueFlags & @as(u32, vulkan_c.VK_QUEUE_TRANSFER_BIT | vulkan_c.VK_QUEUE_GRAPHICS_BIT | vulkan_c.VK_QUEUE_COMPUTE_BIT)) != 0 and
+        if (properties.queueCount > 0 and (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_TRANSFER_BIT | Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) != 0 and
             // prefer dedicated transfer queue
-            (transfer_family == null or (properties.queueFlags & @as(u32, vulkan_c.VK_QUEUE_GRAPHICS_BIT | vulkan_c.VK_QUEUE_COMPUTE_BIT)) == 0)) {
+            (transfer_family == null or (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) == 0)) {
             transfer_family = @intCast(u16, i);
         }
     }
     return transfer_family;
 }
 
-fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *std.meta.Child(vulkan_c.VkDevice), queues: *Queues) !void {
+fn createLogicalDeviceAndQueues(physical_device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *std.meta.Child(Vk.c.VkDevice), queues: *Queues) !void {
     const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(physical_device, allocator);
     defer allocator.free(queue_familiy_properties);
     const graphics_family = findGraphicsFamilyQueue(queue_familiy_properties).?;
     const present_family = (try findPresentFamilyQueue(physical_device, surface, queue_familiy_properties)).?;
     const transfer_family = findTransferFamilyQueue(queue_familiy_properties).?;
 
-    var queue_create_infos: [3]vulkan_c.VkDeviceQueueCreateInfo = undefined;
+    var queue_create_infos: [3]Vk.c.VkDeviceQueueCreateInfo = undefined;
     const queue_priority: f32 = 1;
-    var queue_create_info = vulkan_c.VkDeviceQueueCreateInfo{
-        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+    var queue_create_info = Vk.c.VkDeviceQueueCreateInfo{
+        .sType=Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
         .pNext=null,
         .flags=0,
         .queueFamilyIndex=graphics_family,
@@ -164,10 +164,10 @@ fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surf
         queue_create_info_count += 1;
     }
     std.debug.assert(queue_create_infos.len >= queue_create_info_count);
-    const device_features = std.mem.zeroes(vulkan_c.VkPhysicalDeviceFeatures);
+    const device_features = std.mem.zeroes(Vk.c.VkPhysicalDeviceFeatures);
 
-    var create_info = vulkan_c.VkDeviceCreateInfo{
-        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+    var create_info = Vk.c.VkDeviceCreateInfo{
+        .sType=Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
         .pNext=null,
         .flags=0,
         .queueCreateInfoCount=queue_create_info_count,
@@ -176,23 +176,23 @@ fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surf
         .enabledLayerCount=0,
         .ppEnabledLayerNames=null,
         .enabledExtensionCount=1,
-        .ppEnabledExtensionNames=@ptrCast([*c]const [*:0]const u8, &vulkan_c.VK_KHR_SWAPCHAIN_EXTENSION_NAME),
+        .ppEnabledExtensionNames=@ptrCast([*c]const [*:0]const u8, &Vk.c.VK_KHR_SWAPCHAIN_EXTENSION_NAME),
     };
     if (USE_DEBUG_TOOLS) {
         create_info.enabledLayerCount=validation_layers.len;
         create_info.ppEnabledLayerNames=@ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
     }
-    try checkVulkanResult(vulkan_c.vkCreateDevice(physical_device, &create_info, null, @ptrCast(*vulkan_c.VkDevice, logical_device)));
-    vulkan_c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.graphics));
-    vulkan_c.vkGetDeviceQueue(logical_device.*, present_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.present));
-    vulkan_c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.transfer));
+    try checkVulkanResult(Vk.c.vkCreateDevice(physical_device, &create_info, null, @ptrCast(*Vk.c.VkDevice, logical_device)));
+    Vk.c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.graphics));
+    Vk.c.vkGetDeviceQueue(logical_device.*, present_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.present));
+    Vk.c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.transfer));
     queues.graphics_index = graphics_family;
     queues.present_index = present_family;
     queues.transfer_index = transfer_family;
 }
 
-fn destroyDevice(device: vulkan_c.VkDevice) void {
-    vulkan_c.vkDestroyDevice(device, null);
+fn destroyDevice(device: Vk.c.VkDevice) void {
+    Vk.c.vkDestroyDevice(device, null);
 }
 
 test "Creating logical device and queues should succeed on my pc" {
@@ -204,7 +204,7 @@ test "Creating logical device and queues should succeed on my pc" {
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
 
-    var logical_device: std.meta.Child(vulkan_c.VkDevice) = undefined;
+    var logical_device: std.meta.Child(Vk.c.VkDevice) = undefined;
     const invalid_index = std.math.maxInt(u16);
     var queues: Queues = .{.graphics=undefined, .graphics_index=invalid_index, .present=undefined, .present_index=invalid_index, .transfer=undefined, .transfer_index=invalid_index};
     try createLogicalDeviceAndQueues(physical_device, window.surface, testing.allocator, &logical_device, &queues);
@@ -292,32 +292,32 @@ pub const SwapChainData = struct {
     const Self = @This();
 
     allocator: *mem.Allocator,
-    swap_chain: vulkan_c.VkSwapchainKHR,
-    images: []const vulkan_c.VkImage,
-    views: []const vulkan_c.VkImageView,
-    surface_format: vulkan_c.VkSurfaceFormatKHR,
-    extent: vulkan_c.VkExtent2D,
+    swap_chain: Vk.c.VkSwapchainKHR,
+    images: []const Vk.c.VkImage,
+    views: []const Vk.c.VkImageView,
+    surface_format: Vk.c.VkSurfaceFormatKHR,
+    extent: Vk.c.VkExtent2D,
 
-    pub fn init(window: Window, physical_device: vulkan_c.VkPhysicalDevice, logical_device: vulkan_c.VkDevice, graphics_queue_index: u16, present_queue_index: u16, allocator: *mem.Allocator) !SwapChainData {
+    pub fn init(window: Window, physical_device: Vk.c.VkPhysicalDevice, logical_device: Vk.c.VkDevice, graphics_queue_index: u16, present_queue_index: u16, allocator: *mem.Allocator) !SwapChainData {
         return createSwapChain(window, physical_device, logical_device, graphics_queue_index, present_queue_index, allocator);
     }
 
-    pub fn deinit(self: Self, logical_device: vulkan_c.VkDevice) void {
+    pub fn deinit(self: Self, logical_device: Vk.c.VkDevice) void {
         for (self.views)|view|{
-            vulkan_c.vkDestroyImageView(logical_device, view, null);
+            Vk.c.vkDestroyImageView(logical_device, view, null);
         }
         self.allocator.free(self.images);
         self.allocator.free(self.views);
-        vulkan_c.vkDestroySwapchainKHR(logical_device, self.swap_chain, null);
+        Vk.c.vkDestroySwapchainKHR(logical_device, self.swap_chain, null);
     }
 };
 
-fn chooseSwapSurfaceFormat(surface: vulkan_c.VkSurfaceKHR, physical_device: vulkan_c.VkPhysicalDevice, allocator: *mem.Allocator) !vulkan_c.VkSurfaceFormatKHR {
+fn chooseSwapSurfaceFormat(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) !Vk.c.VkSurfaceFormatKHR {
     var surface_format_count : u32 = undefined;
-    try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, null));
-    const surface_formats = try allocator.alloc(vulkan_c.VkSurfaceFormatKHR, surface_format_count);
+    try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, null));
+    const surface_formats = try allocator.alloc(Vk.c.VkSurfaceFormatKHR, surface_format_count);
     defer allocator.free(surface_formats);
-    try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, surface_formats.ptr));
+    try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, surface_formats.ptr));
 
     // TODO: make it possible to specify what format(s) you prefer
     for (surface_formats) |available_format| {
@@ -329,10 +329,10 @@ fn chooseSwapSurfaceFormat(surface: vulkan_c.VkSurfaceKHR, physical_device: vulk
     return surface_formats[0];
 }
 
-fn chooseSwapExtent(capabilities: vulkan_c.VkSurfaceCapabilitiesKHR, window: Window) !vulkan_c.VkExtent2D {
+fn chooseSwapExtent(capabilities: Vk.c.VkSurfaceCapabilitiesKHR, window: Window) !Vk.c.VkExtent2D {
     // if we get some extent, use it
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
-        return vulkan_c.VkExtent2D{.width=std.math.max(@as(u32, 1), capabilities.currentExtent.width), .height=std.math.max(1, capabilities.currentExtent.height)};
+        return Vk.c.VkExtent2D{.width=std.math.max(@as(u32, 1), capabilities.currentExtent.width), .height=std.math.max(1, capabilities.currentExtent.height)};
     } else {
         // otherwise pick something
         var actual_extent = try window.getSize();
@@ -344,12 +344,12 @@ fn chooseSwapExtent(capabilities: vulkan_c.VkSurfaceCapabilitiesKHR, window: Win
 }
 
 
-fn chooseSwapPresentMode(surface: vulkan_c.VkSurfaceKHR, physical_device: vulkan_c.VkPhysicalDevice, allocator: *mem.Allocator) !vulkan_c.VkPresentModeKHR {
+fn chooseSwapPresentMode(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) !Vk.c.VkPresentModeKHR {
     var present_mode_count : u32 = undefined;
-    try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, null));
-    const present_modes = try allocator.alloc(vulkan_c.VkPresentModeKHR, present_mode_count);
+    try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, null));
+    const present_modes = try allocator.alloc(Vk.c.VkPresentModeKHR, present_mode_count);
     defer allocator.free(present_modes);
-    try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes.ptr));
+    try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, present_modes.ptr));
     for (present_modes) |present_mode| {
         // preferred
         if (present_mode == .VK_PRESENT_MODE_MAILBOX_KHR) {
@@ -360,20 +360,20 @@ fn chooseSwapPresentMode(surface: vulkan_c.VkSurfaceKHR, physical_device: vulkan
     return .VK_PRESENT_MODE_FIFO_KHR;
 }
 
-fn getSwapChainImages(logical_device: vulkan_c.VkDevice, swap_chain: vulkan_c.VkSwapchainKHR, allocator: *mem.Allocator) ![]vulkan_c.VkImage {
+fn getSwapChainImages(logical_device: Vk.c.VkDevice, swap_chain: Vk.c.VkSwapchainKHR, allocator: *mem.Allocator) ![]Vk.c.VkImage {
     var image_count : u32 = undefined;
-    try checkVulkanResult(vulkan_c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null));
-    const images = try allocator.alloc(vulkan_c.VkImage, image_count);
+    try checkVulkanResult(Vk.c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null));
+    const images = try allocator.alloc(Vk.c.VkImage, image_count);
     errdefer allocator.free(images);
-    try checkVulkanResult(vulkan_c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, images.ptr));
+    try checkVulkanResult(Vk.c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, images.ptr));
     return images;
 }
 
-fn createSwapChainImageViews(logical_device: vulkan_c.VkDevice, images: []const vulkan_c.VkImage, format: vulkan_c.VkFormat, allocator: *mem.Allocator) ![] vulkan_c.VkImageView {
-    const image_views = try allocator.alloc(vulkan_c.VkImageView, images.len);
+fn createSwapChainImageViews(logical_device: Vk.c.VkDevice, images: []const Vk.c.VkImage, format: Vk.c.VkFormat, allocator: *mem.Allocator) ![] Vk.c.VkImageView {
+    const image_views = try allocator.alloc(Vk.c.VkImageView, images.len);
     errdefer allocator.free(image_views);
     for (images) |image, i| {
-        const create_info = vulkan_c.VkImageViewCreateInfo{
+        const create_info = Vk.c.VkImageViewCreateInfo{
             .sType=.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
             .pNext=null,
             .flags=0,
@@ -389,25 +389,25 @@ fn createSwapChainImageViews(logical_device: vulkan_c.VkDevice, images: []const 
                 },
 
             .subresourceRange=.{
-                .aspectMask=vulkan_c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .aspectMask=Vk.c.VK_IMAGE_ASPECT_COLOR_BIT,
                 .baseMipLevel=0,
                 .levelCount=1,
                 .baseArrayLayer=0,
-                .layerCount=vulkan_c.VK_REMAINING_ARRAY_LAYERS,
+                .layerCount=Vk.c.VK_REMAINING_ARRAY_LAYERS,
             },
         };
-        try checkVulkanResult(vulkan_c.vkCreateImageView(logical_device, &create_info, null, &image_views[i]));
+        try checkVulkanResult(Vk.c.vkCreateImageView(logical_device, &create_info, null, &image_views[i]));
     }
     return image_views;
 }
 
-fn createSwapChain(window: Window, physical_device: vulkan_c.VkPhysicalDevice, logical_device: vulkan_c.VkDevice, graphics_queue_index: u16, present_queue_index: u16, allocator: *mem.Allocator) !SwapChainData {
+fn createSwapChain(window: Window, physical_device: Vk.c.VkPhysicalDevice, logical_device: Vk.c.VkDevice, graphics_queue_index: u16, present_queue_index: u16, allocator: *mem.Allocator) !SwapChainData {
     const surface_format = try chooseSwapSurfaceFormat(window.surface, physical_device, allocator);
 
-    var capabilities: vulkan_c.VkSurfaceCapabilitiesKHR = undefined;
-    try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, window.surface, &capabilities));
+    var capabilities: Vk.c.VkSurfaceCapabilitiesKHR = undefined;
+    try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, window.surface, &capabilities));
 
-    var create_info = vulkan_c.VkSwapchainCreateInfoKHR{
+    var create_info = Vk.c.VkSwapchainCreateInfoKHR{
         .sType=.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
         .pNext=null,
         .flags=0,
@@ -419,7 +419,7 @@ fn createSwapChain(window: Window, physical_device: vulkan_c.VkPhysicalDevice, l
         .imageColorSpace=surface_format.colorSpace,
         .imageExtent=try chooseSwapExtent(capabilities, window),
         .imageArrayLayers=1,
-        .imageUsage=vulkan_c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageUsage=Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
         .imageSharingMode=.VK_SHARING_MODE_EXCLUSIVE,
         .queueFamilyIndexCount=0, // Optional
         .pQueueFamilyIndices=null, // Optional
@@ -437,9 +437,9 @@ fn createSwapChain(window: Window, physical_device: vulkan_c.VkPhysicalDevice, l
         create_info.queueFamilyIndexCount=2;
         create_info.pQueueFamilyIndices=&queueFamilyIndices;
     }
-    var swap_chain: vulkan_c.VkSwapchainKHR = undefined;
-    errdefer vulkan_c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
-    try checkVulkanResult(vulkan_c.vkCreateSwapchainKHR(logical_device, &create_info, null, &swap_chain));
+    var swap_chain: Vk.c.VkSwapchainKHR = undefined;
+    errdefer Vk.c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
+    try checkVulkanResult(Vk.c.vkCreateSwapchainKHR(logical_device, &create_info, null, &swap_chain));
     const images = try getSwapChainImages(logical_device, swap_chain, allocator);
     errdefer allocator.free(images);
     const image_views = try createSwapChainImageViews(logical_device, images, surface_format.format, allocator);
@@ -455,7 +455,7 @@ test "Creating a swap chain should succeed on my pc" {
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
 
-    var logical_device: std.meta.Child(vulkan_c.VkDevice) = undefined;
+    var logical_device: std.meta.Child(Vk.c.VkDevice) = undefined;
     var queues: Queues = undefined;
     try createLogicalDeviceAndQueues(physical_device, window.surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
@@ -471,16 +471,15 @@ test "Creating a swap chain should succeed on my pc" {
     testing.expect(swap_chain.extent.height != 0);
 }
 
-
-const CoreGraphicsDeviceData = struct {
+pub const CoreGraphicsDeviceData = struct {
     const Self = @This();
 
-    physical_device: std.meta.Child(vulkan_c.VkPhysicalDevice),
-    logical_device: std.meta.Child(vulkan_c.VkDevice),
+    physical_device: std.meta.Child(Vk.c.VkPhysicalDevice),
+    logical_device: std.meta.Child(Vk.c.VkDevice),
     queues: Queues,
     swap_chain : SwapChainData,
 
-    pub fn init(instance: vulkan_c.VkInstance, window: Window, allocator: *mem.Allocator) !CoreGraphicsDeviceData {
+    pub fn init(instance: Vk.c.VkInstance, window: Window, allocator: *mem.Allocator) !CoreGraphicsDeviceData {
         var self : CoreGraphicsDeviceData = undefined;
         self.physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, allocator);
         try createLogicalDeviceAndQueues(self.physical_device, window.surface, allocator, &self.logical_device, &self.queues);
@@ -491,6 +490,12 @@ const CoreGraphicsDeviceData = struct {
     pub fn deinit(self: Self) void {
         self.swap_chain.deinit(self.logical_device);
         destroyDevice(self.logical_device);
+    }
+
+    pub fn getPhysicalDeviceProperties(self: Self) Vk.PhysicalDeviceProperties {
+        var device_properties: Vk.PhysicalDeviceProperties = undefined;
+        Vk.c.vkGetPhysicalDeviceProperties(self.physical_device, &device_properties);
+        return device_properties;
     }
 };
 

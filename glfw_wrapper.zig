@@ -1,4 +1,5 @@
-usingnamespace @import("GLFW_and_Vulkan.zig");
+pub const c = @import("GLFW_and_Vulkan.zig");
+usingnamespace c;
 
 //         glfwSetWindowUserPointer(window, &input);
 //         glfwSetKeyCallback(window, key_callback);

@@ -1,9 +1,7 @@
-pub const vulkan_c = @import("GLFW_and_Vulkan.zig");
-pub const glfw_c = vulkan_c;
-pub const glfw = @import("glfw_wrapper.zig");
-const builtin = @import("builtin");
+const std = @import("std");
+const builtin = std.builtin;
 
-pub fn checkVulkanResult(result: vulkan_c.VkResult) !void {
+pub fn checkVulkanResult(result: Vk.c.VkResult) !void {
     return switch(result) {
         .VK_SUCCESS => void{},
         .VK_NOT_READY => error.VkNotReady,
@@ -49,3 +47,18 @@ pub fn checkVulkanResult(result: vulkan_c.VkResult) !void {
 }
 
 pub const USE_DEBUG_TOOLS = builtin.mode == builtin.Mode.Debug or builtin.mode == builtin.Mode.ReleaseSafe;
+
+pub const Vk = struct {
+    pub const c = @import("GLFW_and_Vulkan.zig");
+
+    const MakeNonOptional = std.meta.Child;
+    pub const PhysicalDevice = MakeNonOptional(c.VkPhysicalDevice);
+    pub const PhysicalDeviceProperties = c.VkPhysicalDeviceProperties;
+    pub const Device = MakeNonOptional(c.VkDevice);
+    pub const CommandPool = MakeNonOptional(c.VkCommandPool);
+    pub const Semaphore = MakeNonOptional(c.VkSemaphore);
+    pub const Buffer = MakeNonOptional(c.VkBuffer);
+    pub const DeviceMemory = MakeNonOptional(c.VkDeviceMemory);
+
+    pub const CommandPoolCreateInfo = c.VkCommandPoolCreateInfo;
+};
