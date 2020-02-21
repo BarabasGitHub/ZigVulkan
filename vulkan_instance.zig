@@ -57,7 +57,7 @@ fn checkVulkanResult(result: vulkan_c.VkResult) !void {
 
 const USE_DEBUG_TOOLS = builtin.mode == builtin.Mode.Debug or builtin.mode == builtin.Mode.ReleaseSafe;
 
-const validation_layers : []const []const u8 = if (comptime USE_DEBUG_TOOLS) &[_][]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
+const validation_layers : []const [:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][:0]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
 
 fn createInstance(application_name: [*:0]const u8, application_version: Version, engine_name: [*:0]const u8, engine_version: Version, extensions: []const [*:0]const u8) !vulkan_c.VkInstance {
     const app_info = vulkan_c.VkApplicationInfo{
@@ -196,35 +196,40 @@ const DeviceFamilyIndices = struct {
     present_family: u16,
 };
 
-fn findSuitableDeviceQueueFamilies(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !DeviceFamilyIndices {
+// the caller owns the returned memory and is responsible for freeing it.
+fn getPhysicalDeviceQueueFamiliyPropeties(device: vulkan_c.VkPhysicalDevice, allocator: *mem.Allocator) ![]vulkan_c.VkQueueFamilyProperties {
     var queue_family_count : u32 = undefined;
     vulkan_c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
     const queue_familiy_properties = try allocator.alloc(vulkan_c.VkQueueFamilyProperties, queue_family_count);
-    defer allocator.free(queue_familiy_properties);
     vulkan_c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_familiy_properties.ptr);
-    var graphics_family: ?u16 = null;
-    var present_family: ?u16 = null;
+    return queue_familiy_properties;
+}
+
+fn findGraphicsFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) ?u16 {
     for (queue_familiy_properties) |properties, i| {
         if (queue_familiy_properties[i].queueCount > 0 and (queue_familiy_properties[i].queueFlags & @as(u32, vulkan_c.VK_QUEUE_GRAPHICS_BIT)) != 0) {
-            graphics_family = @intCast(u16, i);
-            break;
+            return @intCast(u16, i);
         }
     }
-    if (graphics_family == null) {
-        return error.NoSuitableGraphicsQueueFound;
-    }
+    return null;
+}
 
+fn findPresentFamilyQueue(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) !?u16 {
+    var present_family: ?u16 = null;
     for (queue_familiy_properties) |properties, i| {
         var present_support : u32 = undefined;
         try checkVulkanResult(vulkan_c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(u32, i), surface, &present_support));
         if (properties.queueCount > 0 and present_support != 0) {
-            present_family = @intCast(u16, i);
+            return @intCast(u16, i);
         }
     }
-    if (present_family == null) {
-        return error.NoSuitablePresentQueueFound;
-    }
-    return DeviceFamilyIndices{.graphics_family=graphics_family.?, .present_family=present_family.?};
+    return null;
+}
+
+fn hasSuitableDeviceQueueFamilies(device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
+    const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(device, allocator);
+    defer allocator.free(queue_familiy_properties);
+    return findGraphicsFamilyQueue(queue_familiy_properties) != null and (try findPresentFamilyQueue(device, surface, queue_familiy_properties)) != null;
 }
 
 fn containsSwapChainExtension(available_extensions: []const vulkan_c.VkExtensionProperties) bool {
@@ -260,15 +265,7 @@ fn isDeviceSuitableForGraphicsAndPresentation(device: vulkan_c.VkPhysicalDevice,
     var deviceFeatures : vulkan_c.VkPhysicalDeviceFeatures = undefined;
     vulkan_c.vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
-    if (findSuitableDeviceQueueFamilies(device, surface, allocator)) |_| {
-        return hasAdequateSwapChain(device, surface, allocator);
-    } else |err| switch (err) {
-        error.NoSuitablePresentQueueFound => return false,
-        error.NoSuitableGraphicsQueueFound => return false,
-        else => return err,
-    }
-
-    return false;
+    return (try hasSuitableDeviceQueueFamilies(device, surface, allocator)) and hasAdequateSwapChain(device, surface, allocator);
 }
 
 pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: vulkan_c.VkInstance, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator) !std.meta.Child(vulkan_c.VkPhysicalDevice) {
@@ -298,4 +295,119 @@ test "finding a physical device suitable for graphics and presenting should succ
     const surface = try createSurface(instance, window);
     defer destroySurface(instance, surface);
     _ = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, surface, testing.allocator);
+}
+
+const Queues = struct {
+    graphics_queue: vulkan_c.VkQueue,
+    graphics_queue_index: u32,
+    present_queue: vulkan_c.VkQueue,
+    present_queue_index: u32,
+    transfer_queue: vulkan_c.VkQueue,
+    transfer_queue_index: u32,
+};
+
+fn findTransferFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFamilyProperties) ?u16 {
+    var transfer_family: ?u16 = null;
+    for (queue_familiy_properties) |properties, i| {
+        // ----------------------------------------------------------
+        // All commands that are allowed on a queue that supports transfer operations are also allowed on a queue that supports either graphics or compute operations.
+        // Thus, if the capabilities of a queue family include VK_QUEUE_GRAPHICS_BIT or VK_QUEUE_COMPUTE_BIT, then reporting the VK_QUEUE_TRANSFER_BIT capability
+        // separately for that queue family is optional
+        // ----------------------------------------------------------
+        // Thus we check if it has any of these capabilities and prefer a dedicated one
+        if (properties.queueCount > 0 and (properties.queueFlags & @as(u32, vulkan_c.VK_QUEUE_TRANSFER_BIT | vulkan_c.VK_QUEUE_GRAPHICS_BIT | vulkan_c.VK_QUEUE_COMPUTE_BIT)) != 0 and
+            // prefer dedicated transfer queue
+            (transfer_family == null or (properties.queueFlags & @as(u32, vulkan_c.VK_QUEUE_GRAPHICS_BIT | vulkan_c.VK_QUEUE_COMPUTE_BIT)) == 0)) {
+            transfer_family = @intCast(u16, i);
+        }
+    }
+    return transfer_family;
+}
+
+fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *vulkan_c.VkDevice, queues: *Queues) !void {
+    const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(physical_device, allocator);
+    defer allocator.free(queue_familiy_properties);
+    const graphics_family = findGraphicsFamilyQueue(queue_familiy_properties).?;
+    const present_family = (try findPresentFamilyQueue(physical_device, surface, queue_familiy_properties)).?;
+    const transfer_family = findTransferFamilyQueue(queue_familiy_properties).?;
+
+    var queue_create_infos: [3]vulkan_c.VkDeviceQueueCreateInfo = undefined;
+    const queue_priority: f32 = 1;
+    var queue_create_info = vulkan_c.VkDeviceQueueCreateInfo{
+        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .pNext=null,
+        .flags=0,
+        .queueFamilyIndex=graphics_family,
+        .queueCount=1,
+        .pQueuePriorities=&queue_priority,
+    };
+    queue_create_infos[0] = queue_create_info;
+    var queue_create_info_count: u32 = 1;
+    if (graphics_family != present_family) {
+        queue_create_info.queueFamilyIndex = present_family;
+        queue_create_infos[queue_create_info_count] = queue_create_info;
+        queue_create_info_count += 1;
+    }
+
+    if (graphics_family != transfer_family and present_family != transfer_family) {
+        queue_create_info.queueFamilyIndex = transfer_family;
+        queue_create_infos[queue_create_info_count] = queue_create_info;
+        queue_create_info_count += 1;
+    }
+    std.debug.assert(queue_create_infos.len >= queue_create_info_count);
+    const device_features = std.mem.zeroes(vulkan_c.VkPhysicalDeviceFeatures);
+
+    var create_info = vulkan_c.VkDeviceCreateInfo{
+        .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext=null,
+        .flags=0,
+        .queueCreateInfoCount=queue_create_info_count,
+        .pQueueCreateInfos=&queue_create_infos,
+        .pEnabledFeatures=&device_features,
+        .enabledLayerCount=0,
+        .ppEnabledLayerNames=null,
+        .enabledExtensionCount=1,
+        .ppEnabledExtensionNames=@ptrCast([*c]const [*:0]const u8, &vulkan_c.VK_KHR_SWAPCHAIN_EXTENSION_NAME),
+    };
+    if (USE_DEBUG_TOOLS) {
+        create_info.enabledLayerCount=validation_layers.len;
+        create_info.ppEnabledLayerNames=@ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
+    }
+    try checkVulkanResult(vulkan_c.vkCreateDevice(physical_device, &create_info, null, logical_device));
+    vulkan_c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, &queues.graphics_queue);
+    vulkan_c.vkGetDeviceQueue(logical_device.*, present_family, 0, &queues.present_queue);
+    vulkan_c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, &queues.transfer_queue);
+    queues.graphics_queue_index = graphics_family;
+    queues.present_queue_index = present_family;
+    queues.transfer_queue_index = transfer_family;
+}
+
+fn destroyDevice(device: vulkan_c.VkDevice) void {
+    vulkan_c.vkDestroyDevice(device, null);
+}
+
+test "Creating logical device and queues should succeed on my pc" {
+    try glfw.init();
+    defer glfw.deinit();
+    const window = try glfw.createWindow(10, 10, "");
+    defer glfw.destroyWindow(window);
+    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+    defer destroyInstance(instance, null);
+    const surface = try createSurface(instance, window);
+    defer destroySurface(instance, surface);
+    const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, surface, testing.allocator);
+
+    var logical_device: vulkan_c.VkDevice = null;
+    const invalid_index = std.math.maxInt(u32);
+    var queues: Queues = .{.graphics_queue=null, .graphics_queue_index=invalid_index, .present_queue=null, .present_queue_index=invalid_index, .transfer_queue=null, .transfer_queue_index=invalid_index};
+    try createLogicalDeviceAndQueues(physical_device, surface, testing.allocator, &logical_device, &queues);
+    defer destroyDevice(logical_device);
+
+    testing.expect(logical_device != null);
+    testing.expect(queues.graphics_queue != null);
+    testing.expect(queues.graphics_queue_index != invalid_index);
+    testing.expect(queues.present_queue != null);
+    testing.expect(queues.present_queue_index != invalid_index);
+    testing.expect(queues.transfer_queue != null);
+    testing.expect(queues.transfer_queue_index != invalid_index);
 }
