@@ -80,7 +80,7 @@ pub fn getRequiredInstanceExtensions() ![]const[*:0]const u8 {
     var glfwExtensionCount : u32 = 0;
     const extensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     try getGlfwError();
-    return extensions[0..glfwExtensionCount];
+    return @ptrCast([*]const[*:0]const u8, extensions)[0..glfwExtensionCount];
 }
 
 test "Getting the required instance extentions should return at least one extension" {

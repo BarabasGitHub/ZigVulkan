@@ -7,12 +7,6 @@ usingnamespace @import("vulkan_general.zig");
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("glfw_vulkan_window.zig");
 
-const CoreGraphicsDeviceData = struct {
-    physical_device: vulkan_c.VkPhysicalDevice = null,
-    logical_device: vulkan_c.VkPhysicalDevice = null,
-    queues: Queues = .{.graphics=null, .graphics_index=undefined, .present=null, .present_index=undefined, .transfer=null, .transfer_index=undefined},
-};
-
 // the caller owns the returned memory and is responsible for freeing it.
 fn getPhysicalDeviceQueueFamiliyPropeties(device: vulkan_c.VkPhysicalDevice, allocator: *mem.Allocator) ![]vulkan_c.VkQueueFamilyProperties {
     var queue_family_count : u32 = undefined;
@@ -113,11 +107,11 @@ test "finding a physical device suitable for graphics and presenting should succ
 }
 
 const Queues = struct {
-    graphics: vulkan_c.VkQueue,
+    graphics: std.meta.Child(vulkan_c.VkQueue),
     graphics_index: u16,
-    present: vulkan_c.VkQueue,
+    present: std.meta.Child(vulkan_c.VkQueue),
     present_index: u16,
-    transfer: vulkan_c.VkQueue,
+    transfer: std.meta.Child(vulkan_c.VkQueue),
     transfer_index: u16,
 };
 
@@ -139,7 +133,7 @@ fn findTransferFamilyQueue(queue_familiy_properties: []const vulkan_c.VkQueueFam
     return transfer_family;
 }
 
-fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *vulkan_c.VkDevice, queues: *Queues) !void {
+fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surface: vulkan_c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *std.meta.Child(vulkan_c.VkDevice), queues: *Queues) !void {
     const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(physical_device, allocator);
     defer allocator.free(queue_familiy_properties);
     const graphics_family = findGraphicsFamilyQueue(queue_familiy_properties).?;
@@ -188,10 +182,10 @@ fn createLogicalDeviceAndQueues(physical_device: vulkan_c.VkPhysicalDevice, surf
         create_info.enabledLayerCount=validation_layers.len;
         create_info.ppEnabledLayerNames=@ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
     }
-    try checkVulkanResult(vulkan_c.vkCreateDevice(physical_device, &create_info, null, logical_device));
-    vulkan_c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, &queues.graphics);
-    vulkan_c.vkGetDeviceQueue(logical_device.*, present_family, 0, &queues.present);
-    vulkan_c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, &queues.transfer);
+    try checkVulkanResult(vulkan_c.vkCreateDevice(physical_device, &create_info, null, @ptrCast(*vulkan_c.VkDevice, logical_device)));
+    vulkan_c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.graphics));
+    vulkan_c.vkGetDeviceQueue(logical_device.*, present_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.present));
+    vulkan_c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, @ptrCast(*vulkan_c.VkQueue, &queues.transfer));
     queues.graphics_index = graphics_family;
     queues.present_index = present_family;
     queues.transfer_index = transfer_family;
@@ -210,18 +204,18 @@ test "Creating logical device and queues should succeed on my pc" {
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
 
-    var logical_device: vulkan_c.VkDevice = null;
+    var logical_device: std.meta.Child(vulkan_c.VkDevice) = undefined;
     const invalid_index = std.math.maxInt(u16);
-    var queues: Queues = .{.graphics=null, .graphics_index=invalid_index, .present=null, .present_index=invalid_index, .transfer=null, .transfer_index=invalid_index};
+    var queues: Queues = .{.graphics=undefined, .graphics_index=invalid_index, .present=undefined, .present_index=invalid_index, .transfer=undefined, .transfer_index=invalid_index};
     try createLogicalDeviceAndQueues(physical_device, window.surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
 
-    testing.expect(logical_device != null);
-    testing.expect(queues.graphics != null);
+    // testing.expect(logical_device != null);
+    // testing.expect(queues.graphics != null);
     testing.expect(queues.graphics_index != invalid_index);
-    testing.expect(queues.present != null);
+    // testing.expect(queues.present != null);
     testing.expect(queues.present_index != invalid_index);
-    testing.expect(queues.transfer != null);
+    // testing.expect(queues.transfer != null);
     testing.expect(queues.transfer_index != invalid_index);
 }
 
@@ -304,7 +298,11 @@ pub const SwapChainData = struct {
     surface_format: vulkan_c.VkSurfaceFormatKHR,
     extent: vulkan_c.VkExtent2D,
 
-    fn deinit(self: Self, logical_device: vulkan_c.VkDevice) void {
+    pub fn init(window: Window, physical_device: vulkan_c.VkPhysicalDevice, logical_device: vulkan_c.VkDevice, graphics_queue_index: u16, present_queue_index: u16, allocator: *mem.Allocator) !SwapChainData {
+        return createSwapChain(window, physical_device, logical_device, graphics_queue_index, present_queue_index, allocator);
+    }
+
+    pub fn deinit(self: Self, logical_device: vulkan_c.VkDevice) void {
         for (self.views)|view|{
             vulkan_c.vkDestroyImageView(logical_device, view, null);
         }
@@ -457,7 +455,7 @@ test "Creating a swap chain should succeed on my pc" {
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
 
-    var logical_device: vulkan_c.VkDevice = undefined;
+    var logical_device: std.meta.Child(vulkan_c.VkDevice) = undefined;
     var queues: Queues = undefined;
     try createLogicalDeviceAndQueues(physical_device, window.surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
@@ -471,4 +469,39 @@ test "Creating a swap chain should succeed on my pc" {
     // testing.expect(swap_chain.surface_format.colorSpace != ???);
     testing.expect(swap_chain.extent.width != 0);
     testing.expect(swap_chain.extent.height != 0);
+}
+
+
+const CoreGraphicsDeviceData = struct {
+    const Self = @This();
+
+    physical_device: std.meta.Child(vulkan_c.VkPhysicalDevice),
+    logical_device: std.meta.Child(vulkan_c.VkDevice),
+    queues: Queues,
+    swap_chain : SwapChainData,
+
+    pub fn init(instance: vulkan_c.VkInstance, window: Window, allocator: *mem.Allocator) !CoreGraphicsDeviceData {
+        var self : CoreGraphicsDeviceData = undefined;
+        self.physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, allocator);
+        try createLogicalDeviceAndQueues(self.physical_device, window.surface, allocator, &self.logical_device, &self.queues);
+        self.swap_chain = try SwapChainData.init(window, self.physical_device, self.logical_device, self.queues.graphics_index, self.queues.present_index, allocator);
+        return self;
+    }
+
+    pub fn deinit(self: Self) void {
+        self.swap_chain.deinit(self.logical_device);
+        destroyDevice(self.logical_device);
+    }
+};
+
+test "initializing and de-initializing CoreGraphicsDeviceData should succeed on my pc" {
+    try glfw.init();
+    defer glfw.deinit();
+    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+    defer destroyInstance(instance, null);
+    const window = try Window.init(10, 10, "", instance);
+    defer window.deinit(instance);
+
+    const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
+    core_graphics_device_data.deinit();
 }

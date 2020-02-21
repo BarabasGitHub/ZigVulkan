@@ -43,7 +43,7 @@ pub const destroyInstance = vulkan_c.vkDestroyInstance;
 const testing = std.testing;
 
 pub fn createTestInstance(extensions: []const [*:0]const u8) !vulkan_c.VkInstance {
-    return try createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extensions);
+    return createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extensions);
 }
 
 test "Creating a Vulkan instance without extensions should succeed" {
@@ -56,10 +56,10 @@ test "Creating a Vulkan instance without non-existing extensions should fail wit
 }
 
 fn createDebugCallback(instance: vulkan_c.VkInstance, user_callback: @typeInfo(vulkan_c.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: var) !vulkan_c.VkDebugReportCallbackEXT {
-    return try createDebugCallbackWithCanFail(instance, user_callback, user_data);
+    return createDebugCallbackWichCanFail(instance, user_callback, user_data);
 }
 
-fn createDebugCallbackWithCanFail(instance: vulkan_c.VkInstance, user_callback: vulkan_c.PFN_vkDebugReportCallbackEXT, user_data: var) !vulkan_c.VkDebugReportCallbackEXT {
+fn createDebugCallbackWichCanFail(instance: vulkan_c.VkInstance, user_callback: vulkan_c.PFN_vkDebugReportCallbackEXT, user_data: var) !vulkan_c.VkDebugReportCallbackEXT {
     var createInfo = vulkan_c.VkDebugReportCallbackCreateInfoEXT{
         .sType=vulkan_c.VkStructureType.VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
         .pNext=null,
@@ -107,7 +107,7 @@ test "Creating a debug callback should succeed" {
     const callback = try createDebugCallback(instance, debugCallback, &user_data);
     defer destroyDebugCallback(instance, callback);
     // make it generate an error/warning and call the callback by creating a null callback
-    destroyDebugCallback(instance, try createDebugCallbackWithCanFail(instance, null, null));
+    destroyDebugCallback(instance, try createDebugCallbackWichCanFail(instance, null, null));
     // check our callback was called
     testing.expectEqual(@as(u32, 1), user_data);
 }
