@@ -21,6 +21,13 @@ pub const Window = struct{
         destroySurface(instance, self.surface);
         glfw.destroyWindow(self.handle);
     }
+
+    pub fn getSize(self: Window) !vulkan_c.VkExtent2D {
+        var width : i32 = undefined;
+        var height : i32 = undefined;
+        try glfw.getWindowSize(self.handle, &width, &height);
+        return vulkan_c.VkExtent2D{.width=@intCast(u32, width), .height=@intCast(u32, height)};
+    }
 };
 
 pub fn createSurface(instance: vulkan_c.VkInstance, window: *vulkan_c.GLFWwindow) !vulkan_c.VkSurfaceKHR {
@@ -62,4 +69,18 @@ test "initializing a window should succeed" {
     defer destroyInstance(instance, null);
     const window = try Window.init(10, 10, "", instance);
     window.deinit(instance);
+}
+
+test "getting the size of the window should work" {
+    try glfw.init();
+    defer glfw.deinit();
+    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+    defer destroyInstance(instance, null);
+    const width = 200;
+    const height = 300;
+    const window = try Window.init(width, height, "", instance);
+    defer window.deinit(instance);
+
+    testing.expectEqual(vulkan_c.VkExtent2D{.width=width, .height=height}, try window.getSize());
+
 }

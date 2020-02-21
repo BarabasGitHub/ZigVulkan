@@ -37,6 +37,7 @@ pub fn checkVulkanResult(result: vulkan_c.VkResult) !void {
         .VK_ERROR_NOT_PERMITTED_EXT => error.VkErrorNotPermittedExt,
         .VK_ERROR_INVALID_DEVICE_ADDRESS_EXT => error.VkErrorInvalidDeviceAddressExt,
         .VK_ERROR_FULL_SCREEN_EXCLUSIVE_MODE_LOST_EXT => error.VkErrorFullScreenExclusiveModeLostExt,
+        // these are duplicates
         // .VK_ERROR_OUT_OF_POOL_MEMORY_KHR => error.VkErrorOutOfPoolMemoryKhr,
         // .VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR => error.VkErrorInvalidExternalHandleKhr,
         // .VK_RESULT_BEGIN_RANGE => error.VkResultBeginRange,

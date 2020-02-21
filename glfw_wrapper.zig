@@ -88,3 +88,22 @@ test "Getting the required instance extentions should return at least one extens
     defer deinit();
     testing.expect((try getRequiredInstanceExtensions()).len > 0);
 }
+
+pub fn getWindowSize(window: *GLFWwindow, width: *i32, height: *i32) !void {
+    glfwGetWindowSize(window, width, height);
+    try getGlfwError();
+}
+
+test "Getting the window size should succeed" {
+    try init();
+    defer deinit();
+    const width = 200;
+    const height = 300;
+    const window = try createWindow(width, height, "test");
+    defer destroyWindow(window);
+    var width_result : i32 = 0;
+    var height_result : i32 = 0;
+    try getWindowSize(window, &width_result, &height_result);
+    testing.expectEqual(@as(i32, width), width_result);
+    testing.expectEqual(@as(i32, height), height_result);
+}
