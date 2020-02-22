@@ -233,6 +233,45 @@ const DeviceMemoryStore = struct {
         return null;
     }
 
+    pub fn getMappedSlice(self: Self, id: BufferID) []u8 {
+        std.debug.assert(self.isValidBufferId(id));
+        const buffer = self.buffer_ranges.at(id.index);
+        const allocation = self.read_write_buffer_allocations.getValue(buffer.buffer.?).?;
+        return (allocation.mapped.? + buffer.offset)[0..buffer.range];
+    }
+
+    pub fn mapAll(self: Self, frame: u32) !void
+    {
+        var iter = self.read_write_buffer_allocations.iterator();
+        while (iter.next()) |kv| {
+            var allocation = &kv.value;
+            try checkVulkanResult(Vk.c.vkMapMemory(
+                self.logical_device,
+                allocation.device_memory,
+                allocation.size_per_frame * frame,
+                alignInteger(allocation.used_offset, self.configuration.non_coherent_atom_size),
+                0,
+                @ptrCast([*]?*c_void, &allocation.mapped)
+                ));
+        }
+    }
+
+    pub fn unmapAndFlushAll(self: Self, frame: u32) !void {
+        var iter = self.read_write_buffer_allocations.iterator();
+        while (iter.next()) |kv| {
+            var allocation = &kv.value;
+            const mapped_range = Vk.c.VkMappedMemoryRange{
+                .sType=.VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                .pNext=null,
+                .memory=kv.value.device_memory,
+                .offset=allocation.size_per_frame * frame,
+                .size=alignInteger(allocation.used_offset, self.configuration.non_coherent_atom_size),
+            };
+            try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, 1, &mapped_range));
+            Vk.c.vkUnmapMemory(self.logical_device, allocation.device_memory);
+            allocation.mapped = null;
+        }
+    }
 };
 
 fn hasSpaceInBuffer(size: u64, allocation: DeviceMemoryStore.ReadWriteBufferAllocation) bool {
@@ -389,3 +428,29 @@ test "allocating multiple buffers which do not fit in one allocation should have
     testing.expect(!std.meta.eql(buffer_id1, buffer_id2));
 }
 
+test "getting mapped pointers for different frames should have an offset of default_allocation_size aligned to non_coherent_atom_size" {
+    try glfw.init();
+    defer glfw.deinit();
+    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+    defer destroyInstance(instance, null);
+    const window = try Window.init(10, 10, "", instance);
+    defer window.deinit(instance);
+    const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
+    defer core_graphics_device_data.deinit();
+
+    const config = DeviceMemoryStore.ConfigurationRequest{
+        .default_allocation_size=1e3,
+        .default_staging_buffer_size=1,
+    };
+    var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
+    defer store.deinit();
+
+    const buffer_id = try allocateUniformBuffer(&store, 200, 2);
+
+    try store.mapAll(0);
+    const slice0 = store.getMappedSlice(buffer_id);
+    try store.unmapAndFlushAll(0);
+    try store.mapAll(1);
+    const slice1 = store.getMappedSlice(buffer_id);
+    testing.expectEqual(slice0.ptr + alignInteger(store.configuration.default_allocation_size, store.configuration.non_coherent_atom_size), slice1.ptr);
+}
