@@ -7,6 +7,7 @@ pub const Version = struct {
     major: u8,
     minor: u8,
     patch: u8,
+
 };
 
 pub const validation_layers : []const [:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][:0]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
@@ -39,19 +40,45 @@ pub fn createInstance(application_name: [*:0]const u8, application_version: Vers
 
 pub const destroyInstance = Vk.c.vkDestroyInstance;
 
+pub fn destroyTestInstance(instance: Vk.c.VkInstance) void {
+    destroyDebugCallback(instance, global_debug_callback_for_testing.?);
+    global_debug_callback_for_testing = null;
+    destroyInstance(instance, null);
+}
+
 const testing = std.testing;
 
-pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.c.VkInstance {
+pub fn createTestInstanceWithoutDebugCallback(extensions: []const [*:0]const u8) !Vk.c.VkInstance {
     return createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extensions);
 }
 
+fn debugCallbackPrintingWarnings(flags: Vk.c.VkDebugReportFlagsEXT, object_type: Vk.c.VkDebugReportObjectTypeEXT, object: u64, location: usize, message_code: i32, layer_prefix: [*c]const u8, message: [*c]const u8, user_data: ?*c_void) callconv(.C) Vk.c.VkBool32 {
+    if (std.cstr.cmp(layer_prefix, "Loader Message") != 0){
+        std.debug.warn("Validation layer({s}): {s}\n", .{layer_prefix, message});
+    }
+    return @boolToInt(false);
+}
+
+var global_debug_callback_for_testing : Vk.c.VkDebugReportCallbackEXT = null;
+
+pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.c.VkInstance {
+    var extension_list = std.ArrayList([*:0]const u8).init(testing.allocator);
+    defer extension_list.deinit();
+    try extension_list.append(Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
+    try extension_list.appendSlice(extensions);
+    var instance = try createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extension_list.toSlice());
+    global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, null);
+    return instance;
+}
+
+
 test "Creating a Vulkan instance without extensions should succeed" {
-    const instance = try createTestInstance(&[_][*:0]const u8{});
+    const instance = try createTestInstanceWithoutDebugCallback(&[_][*:0]const u8{});
     destroyInstance(instance, null);
 }
 
 test "Creating a Vulkan instance without non-existing extensions should fail with VkErrorExtensionNotPresent" {
-    testing.expectError(error.VkErrorExtensionNotPresent, createTestInstance(&[_][*:0]const u8{"non-existing extention"}));
+    testing.expectError(error.VkErrorExtensionNotPresent, createTestInstance(&[_][*:0]const u8{"non-existing extension"}));
 }
 
 fn createDebugCallback(instance: Vk.c.VkInstance, user_callback: @typeInfo(Vk.c.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: var) !Vk.c.VkDebugReportCallbackEXT {
@@ -99,7 +126,7 @@ fn debugCallback(flags: Vk.c.VkDebugReportFlagsEXT, object_type: Vk.c.VkDebugRep
 }
 
 test "Creating a debug callback should succeed" {
-    var instance = try createTestInstance(&[_][*:0]const u8{Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME});
+    var instance = try createTestInstanceWithoutDebugCallback(&[_][*:0]const u8{Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME});
     defer destroyInstance(instance, null);
     // setup callback with user data
     var user_data : u32 = 0;

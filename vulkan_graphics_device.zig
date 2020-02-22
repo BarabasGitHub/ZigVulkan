@@ -100,7 +100,7 @@ test "finding a physical device suitable for graphics and presenting should succ
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     _ = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
@@ -199,7 +199,7 @@ test "Creating logical device and queues should succeed on my pc" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
@@ -381,7 +381,7 @@ test "Creating a swap chain should succeed on my pc" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
@@ -434,7 +434,7 @@ test "initializing and de-initializing CoreGraphicsDeviceData should succeed on 
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
 

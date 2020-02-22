@@ -332,8 +332,8 @@ const StagingBuffer = struct {
     }
 
     pub fn deinit(self: Self, logical_device: Vk.Device) void {
-        Vk.c.vkFreeMemory(logical_device, self.device_memory, null);
         Vk.c.vkDestroyBuffer(logical_device, self.buffer, null);
+        Vk.c.vkFreeMemory(logical_device, self.device_memory, null);
     }
 };
 
@@ -341,7 +341,7 @@ test "Initializing a device memory store should succeed" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
@@ -365,7 +365,7 @@ test "allocating a buffer should succeed" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
@@ -385,7 +385,7 @@ test "allocating multiple buffers which fit in one allocation should have the sa
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
@@ -410,7 +410,7 @@ test "allocating multiple buffers which do not fit in one allocation should have
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
@@ -432,7 +432,7 @@ test "getting mapped pointers for different frames should have an offset of defa
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     defer window.deinit(instance);
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);

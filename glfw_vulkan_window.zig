@@ -46,7 +46,7 @@ test "Creating a surface should succeed" {
     const window = try glfw.createWindow(10, 10, "");
     defer glfw.destroyWindow(window);
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const surface = try createSurface(instance, window);
     destroySurface(instance, surface);
 }
@@ -58,7 +58,7 @@ test "Creating a surface should succeed" {
 //     const window = try glfw.createWindow(10, 10, "");
 //     defer glfw.destroyWindow(window);
 //     const instance = try createTestInstance(&[_][*:0]const u8{});
-//     defer destroyInstance(instance, null);
+//     defer destroyTestInstance(instance);
 //     testing.expectError(error.VkErrorExtensionNotPresent, createSurface(instance, window));
 // }
 
@@ -66,7 +66,7 @@ test "initializing a window should succeed" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const window = try Window.init(10, 10, "", instance);
     window.deinit(instance);
 }
@@ -75,7 +75,7 @@ test "getting the size of the window should work" {
     try glfw.init();
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyInstance(instance, null);
+    defer destroyTestInstance(instance);
     const width = 200;
     const height = 300;
     const window = try Window.init(width, height, "", instance);
