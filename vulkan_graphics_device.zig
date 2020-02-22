@@ -106,7 +106,7 @@ test "finding a physical device suitable for graphics and presenting should succ
     _ = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, window.surface, testing.allocator);
 }
 
-const Queues = struct {
+pub const Queues = struct {
     graphics: std.meta.Child(Vk.c.VkQueue),
     graphics_index: u16,
     present: std.meta.Child(Vk.c.VkQueue),
@@ -218,75 +218,6 @@ test "Creating logical device and queues should succeed on my pc" {
     // testing.expect(queues.transfer != null);
     testing.expect(queues.transfer_index != invalid_index);
 }
-
-// void CreateSwapChain(VkPhysicalDevice physical_device, VkSurfaceKHR surface, VkDevice logical_device,
-//     uint32_t graphics_queue_family_index, uint32_t present_queue_family_index,
-//     GLFWwindow * window_handle,
-//     SwapChainData & swap_chain_data)
-// {
-//     VkSurfaceCapabilitiesKHR capabilities;
-//     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities);
-
-//     uint32_t surfaceFormatCount;
-//     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surfaceFormatCount, nullptr);
-//     Vector<VkSurfaceFormatKHR> surfaceFormats(surfaceFormatCount, surfaceFormatCount);
-//     vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surfaceFormatCount, begin(surfaceFormats));
-//     VkSurfaceFormatKHR surfaceFormat = ChooseSwapSurfaceFormat(surfaceFormats);
-
-//     VkSwapchainCreateInfoKHR createInfo = {};
-//     createInfo.sType = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR;
-//     createInfo.surface = surface;
-//     // try to get one more so we can have triple buffering
-//     // maxImageCount == 0 means unlimited, so subtract 1 to get uint32_t(-1) and then add one again, because we want one more than the minimum anyway
-//     createInfo.minImageCount = Min(capabilities.minImageCount, capabilities.maxImageCount - 1u) + 1;
-//     createInfo.imageFormat = surfaceFormat.format;
-//     createInfo.imageColorSpace = surfaceFormat.colorSpace;
-//     createInfo.imageExtent = chooseSwapExtent(capabilities, window_handle);
-//     createInfo.imageArrayLayers = 1;
-//     createInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-
-//     uint32_t queueFamilyIndices[] = {graphics_queue_family_index, present_queue_family_index};
-//     // if they're not the same share using concurrent for now
-//     if (graphics_queue_family_index != present_queue_family_index)
-//     {
-//         createInfo.imageSharingMode = VK_SHARING_MODE_CONCURRENT;
-//         createInfo.queueFamilyIndexCount = 2;
-//         createInfo.pQueueFamilyIndices = queueFamilyIndices;
-//     }
-//     else
-//     {
-//         createInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
-//         createInfo.queueFamilyIndexCount = 0; // Optional
-//         createInfo.pQueueFamilyIndices = nullptr; // Optional
-//     }
-
-//     createInfo.preTransform = capabilities.currentTransform;
-//     createInfo.compositeAlpha = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-
-//     {
-//         uint32_t presentModeCount;
-//         vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, nullptr);
-//         Vector<VkPresentModeKHR> presentModes(presentModeCount, presentModeCount);
-//         vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &presentModeCount, begin(presentModes));
-//         createInfo.presentMode = ChooseSwapPresentMode(presentModes);
-//     }
-//     createInfo.clipped = VK_TRUE;
-//     createInfo.oldSwapchain = VK_NULL_HANDLE;
-//     VkSwapchainKHR swap_chain;
-//     if (vkCreateSwapchainKHR(logical_device, &createInfo, nullptr, &swap_chain) != VK_SUCCESS)
-//     {
-//         throw "Failed to create swap chain.";
-//     }
-//     swap_chain_data.swap_chain = swap_chain;
-//     uint32_t imageCount;
-//     vkGetSwapchainImagesKHR(logical_device, swap_chain, &imageCount, nullptr);
-//     ResetSize(imageCount, swap_chain_data.swap_chain_images);
-//     auto images = Values<0>(swap_chain_data.swap_chain_images);
-//     vkGetSwapchainImagesKHR(logical_device, swap_chain, &imageCount, begin(images));
-//     CreateImageViews(logical_device, images, surfaceFormat.format, Values<1>(swap_chain_data.swap_chain_images));
-//     swap_chain_data.surface_format = surfaceFormat;
-//     swap_chain_data.extent = createInfo.imageExtent;
-// }
 
 pub const SwapChainData = struct {
     const Self = @This();

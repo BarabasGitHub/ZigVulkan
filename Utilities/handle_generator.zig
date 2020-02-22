@@ -1,4 +1,4 @@
-usingnamespace @import("handle.zig");
+pub usingnamespace @import("handle.zig");
 const std = @import("std");
 const mem = std.mem;
 
