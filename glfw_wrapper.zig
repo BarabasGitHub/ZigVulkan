@@ -45,6 +45,14 @@ test "Initializing glfw should succeed" {
     deinit();
 }
 
+test "Initializing glfw multiple times should be fine" {
+    try init();
+    defer deinit();
+    try init();
+    try init();
+}
+
+
 pub fn createWindow(width: u31, height: u31, title: [*:0]const u8) !*GLFWwindow {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -108,3 +116,4 @@ test "Getting the window size should succeed" {
     testing.expectEqual(@as(i32, width), width_result);
     testing.expectEqual(@as(i32, height), height_result);
 }
+

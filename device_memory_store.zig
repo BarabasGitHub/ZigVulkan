@@ -5,7 +5,7 @@ const testing = std.testing;
 usingnamespace @import("Utilities/handle_generator.zig");
 
 const glfw = @import("glfw_wrapper.zig");
-const Window = @import("glfw_vulkan_window.zig").Window;
+const Window = @import("window.zig").Window;
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
 
@@ -27,30 +27,6 @@ fn ArrayListExtension(comptime Type: type) type {
         }
     };
 }
-
-fn createTransferCommandPool(logical_device: Vk.Device, transfer_family_index: u32) !Vk.CommandPool {
-    const poolInfo = Vk.CommandPoolCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext=null,
-        .queueFamilyIndex=transfer_family_index,
-        .flags=Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
-    };
-    var command_pool: Vk.CommandPool = undefined;
-    try checkVulkanResult(Vk.c.vkCreateCommandPool(@ptrCast(Vk.c.VkDevice, logical_device), &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
-    return command_pool;
-}
-
-fn createSemaphore(logical_device: Vk.Device) !Vk.Semaphore {
-    const semaphoreInfo = Vk.c.VkSemaphoreCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext=null,
-        .flags=0,
-    };
-    var semaphore: Vk.Semaphore = undefined;
-    try checkVulkanResult(Vk.c.vkCreateSemaphore(logical_device, &semaphoreInfo, null, @ptrCast(*Vk.c.VkSemaphore, &semaphore)));
-    return semaphore;
-}
-
 
 fn alignInteger(offset: u64, alignment: u64) u64
 {
@@ -103,8 +79,8 @@ const DeviceMemoryStore = struct {
         transfer_queue_ownership_semaphore: Vk.Semaphore,
         pub fn init(logical_device: Vk.Device, queues: Queues) !CommandPools {
             return CommandPools{
-                .transfer=try createTransferCommandPool(logical_device, queues.transfer_index),
-                .graphics=try createTransferCommandPool(logical_device, queues.graphics_index),
+                .transfer=try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.transfer_index),
+                .graphics=try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.graphics_index),
                 .transfer_queue_ownership_semaphore=try createSemaphore(logical_device),
             };
         }
@@ -342,10 +318,10 @@ test "Initializing a device memory store should succeed" {
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
     defer destroyTestInstance(instance);
-    const window = try Window.init(10, 10, "", instance);
-    defer window.deinit(instance);
+    const window = try Window.init(10, 10, "");
+    defer window.deinit();
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
-    defer core_graphics_device_data.deinit();
+    defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size=1e3,
@@ -366,10 +342,10 @@ test "allocating a buffer should succeed" {
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
     defer destroyTestInstance(instance);
-    const window = try Window.init(10, 10, "", instance);
-    defer window.deinit(instance);
+    const window = try Window.init(10, 10, "");
+    defer window.deinit();
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
-    defer core_graphics_device_data.deinit();
+    defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size=1e3,
@@ -386,10 +362,10 @@ test "allocating multiple buffers which fit in one allocation should have the sa
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
     defer destroyTestInstance(instance);
-    const window = try Window.init(10, 10, "", instance);
-    defer window.deinit(instance);
+    const window = try Window.init(10, 10, "");
+    defer window.deinit();
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
-    defer core_graphics_device_data.deinit();
+    defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size=1e3,
@@ -411,10 +387,10 @@ test "allocating multiple buffers which do not fit in one allocation should have
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
     defer destroyTestInstance(instance);
-    const window = try Window.init(10, 10, "", instance);
-    defer window.deinit(instance);
+    const window = try Window.init(10, 10, "");
+    defer window.deinit();
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
-    defer core_graphics_device_data.deinit();
+    defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size=1,
@@ -433,10 +409,10 @@ test "getting mapped pointers for different frames should have an offset of defa
     defer glfw.deinit();
     const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
     defer destroyTestInstance(instance);
-    const window = try Window.init(10, 10, "", instance);
-    defer window.deinit(instance);
+    const window = try Window.init(10, 10, "");
+    defer window.deinit();
     const core_graphics_device_data = try CoreGraphicsDeviceData.init(instance, window, testing.allocator);
-    defer core_graphics_device_data.deinit();
+    defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size=1e3,

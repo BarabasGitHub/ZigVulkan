@@ -3,23 +3,36 @@ const mem = std.mem;
 
 usingnamespace @import("vulkan_general.zig");
 
-pub const Version = struct {
-    major: u8,
-    minor: u8,
-    patch: u8,
+pub const ApplicationInfo = struct {
+    application: NameAndVersion,
+    engine: NameAndVersion,
 
+    pub const Version = struct {
+        major: u10,
+        minor: u10,
+        patch: u12,
+    };
+
+    pub const NameAndVersion = struct {
+        name: [:0]const u8,
+        version: Version,
+    };
 };
 
-pub const validation_layers : []const [:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][:0]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
+fn VulkanVersionFromVersion(version: ApplicationInfo.Version) u32 {
+    return Vk.c.VK_MAKE_VERSION(@as(u32, version.major), @as(u22, version.minor), version.patch);
+}
 
-pub fn createInstance(application_name: [*:0]const u8, application_version: Version, engine_name: [*:0]const u8, engine_version: Version, extensions: []const [*:0]const u8) !Vk.c.VkInstance {
+pub const validation_layers : []const [*:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][*:0]const u8{ "VK_LAYER_LUNARG_standard_validation", } else {};
+
+pub fn createInstance(application_info: ApplicationInfo, extensions: []const [*:0]const u8) !Vk.Instance {
     const app_info = Vk.c.VkApplicationInfo{
         .sType=Vk.c.enum_VkStructureType.VK_STRUCTURE_TYPE_APPLICATION_INFO,
         .pNext=null,
-        .pApplicationName=application_name,
-        .applicationVersion=Vk.c.VK_MAKE_VERSION(0, 0, 0),
-        .pEngineName=engine_name,
-        .engineVersion=Vk.c.VK_MAKE_VERSION(0, 0, 0),
+        .pApplicationName=application_info.application.name,
+        .applicationVersion=VulkanVersionFromVersion(application_info.application.version),
+        .pEngineName=application_info.engine.name,
+        .engineVersion=VulkanVersionFromVersion(application_info.engine.version),
         .apiVersion=Vk.c.VK_API_VERSION_1_0,
     };
 
@@ -28,13 +41,13 @@ pub fn createInstance(application_name: [*:0]const u8, application_version: Vers
         .pNext=null,
         .pApplicationInfo=&app_info,
         .enabledExtensionCount=@intCast(u32, extensions.len),
-        .ppEnabledExtensionNames=@ptrCast([*c]const [*c]const u8, extensions.ptr),
+        .ppEnabledExtensionNames=extensions.ptr,
         .flags=0,
         .enabledLayerCount=@intCast(u32, validation_layers.len),
-        .ppEnabledLayerNames=@ptrCast([*c]const [*c]const u8, validation_layers.ptr),
+        .ppEnabledLayerNames=validation_layers.ptr,
     };
-    var instance: Vk.c.VkInstance = undefined;
-    try checkVulkanResult(Vk.c.vkCreateInstance(&createInfo, null, &instance));
+    var instance: Vk.Instance = undefined;
+    try checkVulkanResult(Vk.c.vkCreateInstance(&createInfo, null, @ptrCast(*Vk.c.VkInstance, &instance)));
     return instance;
 }
 
@@ -48,8 +61,9 @@ pub fn destroyTestInstance(instance: Vk.c.VkInstance) void {
 
 const testing = std.testing;
 
-pub fn createTestInstanceWithoutDebugCallback(extensions: []const [*:0]const u8) !Vk.c.VkInstance {
-    return createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extensions);
+pub fn createTestInstanceWithoutDebugCallback(extensions: []const [*:0]const u8) !Vk.Instance {
+    const application_info = ApplicationInfo{.application=.{.name="test_application", .version=.{.major=0, .minor=0, .patch=0}}, .engine=.{.name="test_engine", .version=.{.major=0, .minor=0, .patch=0}}};
+    return createInstance(application_info, extensions);
 }
 
 fn debugCallbackPrintingWarnings(flags: Vk.c.VkDebugReportFlagsEXT, object_type: Vk.c.VkDebugReportObjectTypeEXT, object: u64, location: usize, message_code: i32, layer_prefix: [*c]const u8, message: [*c]const u8, user_data: ?*c_void) callconv(.C) Vk.c.VkBool32 {
@@ -61,12 +75,12 @@ fn debugCallbackPrintingWarnings(flags: Vk.c.VkDebugReportFlagsEXT, object_type:
 
 var global_debug_callback_for_testing : Vk.c.VkDebugReportCallbackEXT = null;
 
-pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.c.VkInstance {
+pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.Instance {
     var extension_list = std.ArrayList([*:0]const u8).init(testing.allocator);
     defer extension_list.deinit();
     try extension_list.append(Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     try extension_list.appendSlice(extensions);
-    var instance = try createInstance("test_application", .{.major=0, .minor=0, .patch=0}, "test_engine", .{.major=0, .minor=0, .patch=0}, extension_list.toSlice());
+    var instance = try createInstance(.{.application=.{.name="test_application", .version=.{.major=0, .minor=0, .patch=0}}, .engine=.{.name="test_engine", .version=.{.major=0, .minor=0, .patch=0}}}, extension_list.toSlice());
     global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, null);
     return instance;
 }
