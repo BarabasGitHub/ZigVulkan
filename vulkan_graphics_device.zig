@@ -678,10 +678,7 @@ test "creating a Renderer should succeed" {
     defer window.deinit();
     const renderer = try Renderer.init(
         window,
-        .{
-            .application = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
-            .engine = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
-        },
+        testApplicationInfo(),
         &[_][*:0]const u8{Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME},
         testing.allocator,
     );

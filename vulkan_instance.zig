@@ -19,6 +19,17 @@ pub const ApplicationInfo = struct {
     };
 };
 
+pub fn testApplicationInfo() ApplicationInfo {
+    return .{
+        .application = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
+        .engine = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
+    };
+}
+
+pub fn testExtensions() []const [*:0]const u8 {
+    return &[_][*:0]const u8{Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME};
+}
+
 fn VulkanVersionFromVersion(version: ApplicationInfo.Version) u32 {
     return Vk.c.VK_MAKE_VERSION(@as(u32, version.major), @as(u22, version.minor), version.patch);
 }
@@ -95,13 +106,7 @@ pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.Instance {
     defer extension_list.deinit();
     try extension_list.append(Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     try extension_list.appendSlice(extensions);
-    var instance = try createInstance(.{
-        .application = .{ .name = "test_application", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
-        .engine = .{
-            .name = "test_engine",
-            .version = .{ .major = 0, .minor = 0, .patch = 0 },
-        },
-    }, extension_list.toSlice());
+    var instance = try createInstance(testApplicationInfo(), extension_list.toSlice());
     global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, null);
     return instance;
 }
