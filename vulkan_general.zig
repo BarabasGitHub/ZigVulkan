@@ -54,7 +54,6 @@ pub const Vk = struct {
     const MakeNonOptional = std.meta.Child;
     pub const Instance = MakeNonOptional(c.VkInstance);
     pub const PhysicalDevice = MakeNonOptional(c.VkPhysicalDevice);
-    pub const PhysicalDeviceProperties = c.VkPhysicalDeviceProperties;
     pub const Device = MakeNonOptional(c.VkDevice);
     pub const CommandPool = MakeNonOptional(c.VkCommandPool);
     pub const Semaphore = MakeNonOptional(c.VkSemaphore);
@@ -68,12 +67,10 @@ pub const Vk = struct {
     pub const RenderPass = MakeNonOptional(c.VkRenderPass);
     pub const Framebuffer = MakeNonOptional(c.VkFramebuffer);
     pub const CommandBuffer = MakeNonOptional(c.VkCommandBuffer);
-
-    pub const CommandPoolCreateInfo = c.VkCommandPoolCreateInfo;
 };
 
 pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_index: u32) !Vk.CommandPool {
-    const poolInfo = Vk.CommandPoolCreateInfo{
+    const poolInfo = Vk.c.VkCommandPoolCreateInfo{
         .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
         .pNext = null,
         .queueFamilyIndex = transfer_family_index,

@@ -435,8 +435,8 @@ pub const CoreGraphicsDeviceData = struct {
         destroySurface(instance, self.surface);
     }
 
-    pub fn getPhysicalDeviceProperties(self: Self) Vk.PhysicalDeviceProperties {
-        var device_properties: Vk.PhysicalDeviceProperties = undefined;
+    pub fn getPhysicalDeviceProperties(self: Self) Vk.c.VkPhysicalDeviceProperties {
+        var device_properties: Vk.c.VkPhysicalDeviceProperties = undefined;
         Vk.c.vkGetPhysicalDeviceProperties(self.physical_device, &device_properties);
         return device_properties;
     }
