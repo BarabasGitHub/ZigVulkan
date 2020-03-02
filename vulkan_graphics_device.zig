@@ -10,7 +10,7 @@ usingnamespace @import("window.zig");
 
 // the caller owns the returned memory and is responsible for freeing it.
 fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) ![]Vk.c.VkQueueFamilyProperties {
-    var queue_family_count : u32 = undefined;
+    var queue_family_count: u32 = undefined;
     Vk.c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
     const queue_familiy_properties = try allocator.alloc(Vk.c.VkQueueFamilyProperties, queue_family_count);
     Vk.c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, queue_familiy_properties.ptr);
@@ -29,7 +29,7 @@ fn findGraphicsFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyP
 fn findPresentFamilyQueue(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) !?u16 {
     var present_family: ?u16 = null;
     for (queue_familiy_properties) |properties, i| {
-        var present_support : u32 = undefined;
+        var present_support: u32 = undefined;
         try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceSupportKHR(device, @intCast(u32, i), surface, &present_support));
         if (properties.queueCount > 0 and present_support != 0) {
             return @intCast(u16, i);
@@ -54,7 +54,7 @@ fn containsSwapChainExtension(available_extensions: []const Vk.c.VkExtensionProp
 }
 
 fn hasAdequateSwapChain(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator) !bool {
-    var extension_count : u32 = undefined;
+    var extension_count: u32 = undefined;
     try checkVulkanResult(Vk.c.vkEnumerateDeviceExtensionProperties(device, null, &extension_count, null));
     const available_extensions = try allocator.alloc(Vk.c.VkExtensionProperties, extension_count);
     defer allocator.free(available_extensions);
@@ -62,7 +62,7 @@ fn hasAdequateSwapChain(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKH
     if (containsSwapChainExtension(available_extensions)) {
         var capabilities: Vk.c.VkSurfaceCapabilitiesKHR = undefined;
         try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(device, surface, &capabilities));
-        var surface_format_count : u32 = undefined;
+        var surface_format_count: u32 = undefined;
         try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceFormatsKHR(device, surface, &surface_format_count, null));
         var present_mode_count: u32 = undefined;
         try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfacePresentModesKHR(device, surface, &present_mode_count, null));
@@ -74,14 +74,14 @@ fn hasAdequateSwapChain(device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKH
 fn isDeviceSuitableForGraphicsAndPresentation(device: Vk.PhysicalDevice, surface: Vk.SurfaceKHR, allocator: *mem.Allocator) !bool {
     var deviceProperties: Vk.c.VkPhysicalDeviceProperties = undefined;
     Vk.c.vkGetPhysicalDeviceProperties(device, &deviceProperties);
-    var deviceFeatures : Vk.c.VkPhysicalDeviceFeatures = undefined;
+    var deviceFeatures: Vk.c.VkPhysicalDeviceFeatures = undefined;
     Vk.c.vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 
     return (try hasSuitableDeviceQueueFamilies(device, surface, allocator)) and hasAdequateSwapChain(device, surface, allocator);
 }
 
 pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: Vk.Instance, surface: Vk.SurfaceKHR, allocator: *mem.Allocator) !Vk.PhysicalDevice {
-    var device_count : u32 = 0;
+    var device_count: u32 = 0;
     try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, null));
     if (device_count == 0) {
         return error.NoDeviceWithVulkanSupportFound;
@@ -128,8 +128,9 @@ fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyP
         // ----------------------------------------------------------
         // Thus we check if it has any of these capabilities and prefer a dedicated one
         if (properties.queueCount > 0 and (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_TRANSFER_BIT | Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) != 0 and
-            // prefer dedicated transfer queue
-            (transfer_family == null or (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) == 0)) {
+        // prefer dedicated transfer queue
+            (transfer_family == null or (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) == 0))
+        {
             transfer_family = @intCast(u16, i);
         }
     }
@@ -146,12 +147,12 @@ fn createLogicalDeviceAndQueues(physical_device: Vk.c.VkPhysicalDevice, surface:
     var queue_create_infos: [3]Vk.c.VkDeviceQueueCreateInfo = undefined;
     const queue_priority: f32 = 1;
     var queue_create_info = Vk.c.VkDeviceQueueCreateInfo{
-        .sType=Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .pNext=null,
-        .flags=0,
-        .queueFamilyIndex=graphics_family,
-        .queueCount=1,
-        .pQueuePriorities=&queue_priority,
+        .sType = Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .queueFamilyIndex = graphics_family,
+        .queueCount = 1,
+        .pQueuePriorities = &queue_priority,
     };
     queue_create_infos[0] = queue_create_info;
     var queue_create_info_count: u32 = 1;
@@ -170,20 +171,20 @@ fn createLogicalDeviceAndQueues(physical_device: Vk.c.VkPhysicalDevice, surface:
     const device_features = std.mem.zeroes(Vk.c.VkPhysicalDeviceFeatures);
 
     var create_info = Vk.c.VkDeviceCreateInfo{
-        .sType=Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext=null,
-        .flags=0,
-        .queueCreateInfoCount=queue_create_info_count,
-        .pQueueCreateInfos=&queue_create_infos,
-        .pEnabledFeatures=&device_features,
-        .enabledLayerCount=0,
-        .ppEnabledLayerNames=null,
-        .enabledExtensionCount=1,
-        .ppEnabledExtensionNames=@ptrCast([*c]const [*:0]const u8, &Vk.c.VK_KHR_SWAPCHAIN_EXTENSION_NAME),
+        .sType = Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .queueCreateInfoCount = queue_create_info_count,
+        .pQueueCreateInfos = &queue_create_infos,
+        .pEnabledFeatures = &device_features,
+        .enabledLayerCount = 0,
+        .ppEnabledLayerNames = null,
+        .enabledExtensionCount = 1,
+        .ppEnabledExtensionNames = @ptrCast([*c]const [*:0]const u8, &Vk.c.VK_KHR_SWAPCHAIN_EXTENSION_NAME),
     };
     if (USE_DEBUG_TOOLS) {
-        create_info.enabledLayerCount=validation_layers.len;
-        create_info.ppEnabledLayerNames=@ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
+        create_info.enabledLayerCount = validation_layers.len;
+        create_info.ppEnabledLayerNames = @ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
     }
     try checkVulkanResult(Vk.c.vkCreateDevice(physical_device, &create_info, null, @ptrCast(*Vk.c.VkDevice, logical_device)));
     Vk.c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.graphics));
@@ -211,7 +212,7 @@ test "Creating logical device and queues should succeed on my pc" {
 
     var logical_device: std.meta.Child(Vk.c.VkDevice) = undefined;
     const invalid_index = std.math.maxInt(u16);
-    var queues: Queues = .{.graphics=undefined, .graphics_index=invalid_index, .present=undefined, .present_index=invalid_index, .transfer=undefined, .transfer_index=invalid_index};
+    var queues: Queues = .{ .graphics = undefined, .graphics_index = invalid_index, .present = undefined, .present_index = invalid_index, .transfer = undefined, .transfer_index = invalid_index };
     try createLogicalDeviceAndQueues(physical_device, surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
 
@@ -239,7 +240,7 @@ pub const SwapChainData = struct {
     }
 
     pub fn deinit(self: Self, logical_device: Vk.c.VkDevice) void {
-        for (self.views)|view|{
+        for (self.views) |view| {
             Vk.c.vkDestroyImageView(logical_device, view, null);
         }
         self.allocator.free(self.images);
@@ -249,7 +250,7 @@ pub const SwapChainData = struct {
 };
 
 fn chooseSwapSurfaceFormat(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) !Vk.c.VkSurfaceFormatKHR {
-    var surface_format_count : u32 = undefined;
+    var surface_format_count: u32 = undefined;
     try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceFormatsKHR(physical_device, surface, &surface_format_count, null));
     const surface_formats = try allocator.alloc(Vk.c.VkSurfaceFormatKHR, surface_format_count);
     defer allocator.free(surface_formats);
@@ -268,10 +269,10 @@ fn chooseSwapSurfaceFormat(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkP
 fn chooseSwapExtent(capabilities: Vk.c.VkSurfaceCapabilitiesKHR) Vk.c.VkExtent2D {
     // if we get some extent, use it
     if (capabilities.currentExtent.width != std.math.maxInt(u32)) {
-        return Vk.c.VkExtent2D{.width=std.math.max(@as(u32, 1), capabilities.currentExtent.width), .height=std.math.max(1, capabilities.currentExtent.height)};
+        return Vk.c.VkExtent2D{ .width = std.math.max(@as(u32, 1), capabilities.currentExtent.width), .height = std.math.max(1, capabilities.currentExtent.height) };
     } else {
         // otherwise pick something
-        var arbitrary_extent = Vk.c.VkExtent2D{.width=128, .height=128};
+        var arbitrary_extent = Vk.c.VkExtent2D{ .width = 128, .height = 128 };
         arbitrary_extent.width = std.math.max(1, std.math.clamp(arbitrary_extent.width, capabilities.minImageExtent.width, capabilities.maxImageExtent.width));
         arbitrary_extent.height = std.math.max(1, std.math.clamp(arbitrary_extent.height, capabilities.minImageExtent.height, capabilities.maxImageExtent.height));
 
@@ -279,9 +280,8 @@ fn chooseSwapExtent(capabilities: Vk.c.VkSurfaceCapabilitiesKHR) Vk.c.VkExtent2D
     }
 }
 
-
 fn chooseSwapPresentMode(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) !Vk.c.VkPresentModeKHR {
-    var present_mode_count : u32 = undefined;
+    var present_mode_count: u32 = undefined;
     try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfacePresentModesKHR(physical_device, surface, &present_mode_count, null));
     const present_modes = try allocator.alloc(Vk.c.VkPresentModeKHR, present_mode_count);
     defer allocator.free(present_modes);
@@ -297,7 +297,7 @@ fn chooseSwapPresentMode(surface: Vk.c.VkSurfaceKHR, physical_device: Vk.c.VkPhy
 }
 
 fn getSwapChainImages(logical_device: Vk.Device, swap_chain: Vk.SwapchainKHR, allocator: *mem.Allocator) ![]Vk.Image {
-    var image_count : u32 = undefined;
+    var image_count: u32 = undefined;
     try checkVulkanResult(Vk.c.vkGetSwapchainImagesKHR(logical_device, swap_chain, &image_count, null));
     const images = try allocator.alloc(Vk.Image, image_count);
     errdefer allocator.free(images);
@@ -305,31 +305,31 @@ fn getSwapChainImages(logical_device: Vk.Device, swap_chain: Vk.SwapchainKHR, al
     return images;
 }
 
-fn createSwapChainImageViews(logical_device: Vk.Device, images: []const Vk.Image, format: Vk.c.VkFormat, allocator: *mem.Allocator) ![] Vk.ImageView {
+fn createSwapChainImageViews(logical_device: Vk.Device, images: []const Vk.Image, format: Vk.c.VkFormat, allocator: *mem.Allocator) ![]Vk.ImageView {
     const image_views = try allocator.alloc(Vk.ImageView, images.len);
     errdefer allocator.free(image_views);
     for (images) |image, i| {
         const create_info = Vk.c.VkImageViewCreateInfo{
-            .sType=.VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-            .pNext=null,
-            .flags=0,
-            .image=image,
-            .viewType=.VK_IMAGE_VIEW_TYPE_2D,
-            .format=format,
+            .sType = .VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+            .pNext = null,
+            .flags = 0,
+            .image = image,
+            .viewType = .VK_IMAGE_VIEW_TYPE_2D,
+            .format = format,
 
-            .components=.{
-                .r=.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .g=.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .b=.VK_COMPONENT_SWIZZLE_IDENTITY,
-                .a=.VK_COMPONENT_SWIZZLE_IDENTITY,
-                },
+            .components = .{
+                .r = .VK_COMPONENT_SWIZZLE_IDENTITY,
+                .g = .VK_COMPONENT_SWIZZLE_IDENTITY,
+                .b = .VK_COMPONENT_SWIZZLE_IDENTITY,
+                .a = .VK_COMPONENT_SWIZZLE_IDENTITY,
+            },
 
-            .subresourceRange=.{
-                .aspectMask=Vk.c.VK_IMAGE_ASPECT_COLOR_BIT,
-                .baseMipLevel=0,
-                .levelCount=1,
-                .baseArrayLayer=0,
-                .layerCount=Vk.c.VK_REMAINING_ARRAY_LAYERS,
+            .subresourceRange = .{
+                .aspectMask = Vk.c.VK_IMAGE_ASPECT_COLOR_BIT,
+                .baseMipLevel = 0,
+                .levelCount = 1,
+                .baseArrayLayer = 0,
+                .layerCount = Vk.c.VK_REMAINING_ARRAY_LAYERS,
             },
         };
         try checkVulkanResult(Vk.c.vkCreateImageView(logical_device, &create_info, null, @ptrCast(*Vk.c.VkImageView, &image_views[i])));
@@ -345,34 +345,33 @@ fn createSwapChain(surface: Vk.SurfaceKHR, physical_device: Vk.PhysicalDevice, l
     try checkVulkanResult(Vk.c.vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physical_device, surface, &capabilities));
 
     var create_info = Vk.c.VkSwapchainCreateInfoKHR{
-        .sType=.VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
-        .pNext=null,
-        .flags=0,
-        .surface=surface,
+        .sType = .VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .pNext = null,
+        .flags = 0,
+        .surface = surface,
         // try to get one more so we can have triple buffering
         // maxImageCount == 0 means unlimited, so subtract 1 to get uint32_t(-1) and then add one again, because we want one more than the minimum anyway
-        .minImageCount=std.math.min(capabilities.minImageCount, capabilities.maxImageCount - 1) + 1,
-        .imageFormat=surface_format.format,
-        .imageColorSpace=surface_format.colorSpace,
-        .imageExtent=chooseSwapExtent(capabilities),
-        .imageArrayLayers=1,
-        .imageUsage=Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
-        .imageSharingMode=.VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount=0, // Optional
-        .pQueueFamilyIndices=null, // Optional
-        .preTransform=capabilities.currentTransform,
-        .compositeAlpha=.VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
-        .presentMode=try chooseSwapPresentMode(surface, physical_device, allocator),
-        .clipped=@boolToInt(true),
-        .oldSwapchain=null,
+        .minImageCount = std.math.min(capabilities.minImageCount, capabilities.maxImageCount - 1) + 1,
+        .imageFormat = surface_format.format,
+        .imageColorSpace = surface_format.colorSpace,
+        .imageExtent = chooseSwapExtent(capabilities),
+        .imageArrayLayers = 1,
+        .imageUsage = Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT,
+        .imageSharingMode = .VK_SHARING_MODE_EXCLUSIVE,
+        .queueFamilyIndexCount = 0, // Optional
+        .pQueueFamilyIndices = null, // Optional
+        .preTransform = capabilities.currentTransform,
+        .compositeAlpha = .VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .presentMode = try chooseSwapPresentMode(surface, physical_device, allocator),
+        .clipped = @boolToInt(true),
+        .oldSwapchain = null,
     };
-    const queueFamilyIndices = [_]u32{graphics_queue_index, present_queue_index};
+    const queueFamilyIndices = [_]u32{ graphics_queue_index, present_queue_index };
     // if they're not the same share using concurrent for now
-    if (graphics_queue_index != present_queue_index)
-    {
-        create_info.imageSharingMode=.VK_SHARING_MODE_CONCURRENT;
-        create_info.queueFamilyIndexCount=2;
-        create_info.pQueueFamilyIndices=&queueFamilyIndices;
+    if (graphics_queue_index != present_queue_index) {
+        create_info.imageSharingMode = .VK_SHARING_MODE_CONCURRENT;
+        create_info.queueFamilyIndexCount = 2;
+        create_info.pQueueFamilyIndices = &queueFamilyIndices;
     }
     var swap_chain: Vk.SwapchainKHR = undefined;
     errdefer Vk.c.vkDestroySwapchainKHR(logical_device, swap_chain, null);
@@ -380,7 +379,7 @@ fn createSwapChain(surface: Vk.SurfaceKHR, physical_device: Vk.PhysicalDevice, l
     const images = try getSwapChainImages(logical_device, swap_chain, allocator);
     errdefer allocator.free(images);
     const image_views = try createSwapChainImageViews(logical_device, images, surface_format.format, allocator);
-    return SwapChainData{.allocator=allocator, .swap_chain=swap_chain, .images=images, .views=image_views, .surface_format=surface_format, .extent=create_info.imageExtent,};
+    return SwapChainData{ .allocator = allocator, .swap_chain = swap_chain, .images = images, .views = image_views, .surface_format = surface_format, .extent = create_info.imageExtent };
 }
 
 test "Creating a swap chain should succeed on my pc" {
@@ -417,10 +416,10 @@ pub const CoreGraphicsDeviceData = struct {
     physical_device: Vk.PhysicalDevice,
     logical_device: Vk.Device,
     queues: Queues,
-    swap_chain : SwapChainData,
+    swap_chain: SwapChainData,
 
     pub fn init(instance: Vk.Instance, window: Window, allocator: *mem.Allocator) !CoreGraphicsDeviceData {
-        var self : CoreGraphicsDeviceData = undefined;
+        var self: CoreGraphicsDeviceData = undefined;
         self.surface = try createSurface(instance, window.handle);
         errdefer destroySurface(instance, self.surface);
         self.physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, self.surface, allocator);
@@ -457,13 +456,12 @@ test "initializing and de-initializing CoreGraphicsDeviceData should succeed on 
     core_graphics_device_data.deinit(instance);
 }
 
-fn createGraphicsCommandPool(logical_device: Vk.Device, graphics_family_index: u32) !Vk.CommandPool
-{
+fn createGraphicsCommandPool(logical_device: Vk.Device, graphics_family_index: u32) !Vk.CommandPool {
     const poolInfo = Vk.c.VkCommandPoolCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext=null,
-        .queueFamilyIndex=graphics_family_index,
-        .flags=Vk.c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Optional
+        .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = null,
+        .queueFamilyIndex = graphics_family_index,
+        .flags = Vk.c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Optional
     };
     var command_pool: Vk.CommandPool = undefined;
     try checkVulkanResult(Vk.c.vkCreateCommandPool(logical_device, &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
@@ -472,25 +470,25 @@ fn createGraphicsCommandPool(logical_device: Vk.Device, graphics_family_index: u
 
 const destroyCommandPool = Vk.c.vkDestroyCommandPool;
 
-fn createDescriptorPool(logical_device: Vk.Device ) !Vk.DescriptorPool
-{
+fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
     const pool_sizes = [3]Vk.c.VkDescriptorPoolSize{
         .{
-            .type=.VK_DESCRIPTOR_TYPE_SAMPLER,
-            .descriptorCount=64,
+            .type = .VK_DESCRIPTOR_TYPE_SAMPLER,
+            .descriptorCount = 64,
         },
         .{
-            .type=.VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .descriptorCount=64,
+            .type = .VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .descriptorCount = 64,
         },
         .{
-            .type=.VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount=64,
-            }};
+            .type = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 64,
+        },
+    };
 
     const pool_info = Vk.c.VkDescriptorPoolCreateInfo{
-        .sType =.VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .pNext=null,
+        .sType = .VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+        .pNext = null,
         .poolSizeCount = pool_sizes.len,
         .pPoolSizes = &pool_sizes,
         .maxSets = 128,
@@ -504,58 +502,57 @@ fn createDescriptorPool(logical_device: Vk.Device ) !Vk.DescriptorPool
 
 const destroyDescriptorPool = Vk.c.vkDestroyDescriptorPool;
 
-fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.RenderPass
-{
+fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.RenderPass {
     const colorAttachment = Vk.c.VkAttachmentDescription{
-        .format=display_image_format,
-        .samples=.VK_SAMPLE_COUNT_1_BIT,
-        .loadOp=.VK_ATTACHMENT_LOAD_OP_CLEAR,
-        .storeOp=.VK_ATTACHMENT_STORE_OP_STORE,
-        .stencilLoadOp=.VK_ATTACHMENT_LOAD_OP_DONT_CARE,
-        .stencilStoreOp=.VK_ATTACHMENT_STORE_OP_DONT_CARE,
-        .initialLayout=.VK_IMAGE_LAYOUT_UNDEFINED,
-        .finalLayout=.VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
-        .flags=0,
+        .format = display_image_format,
+        .samples = .VK_SAMPLE_COUNT_1_BIT,
+        .loadOp = .VK_ATTACHMENT_LOAD_OP_CLEAR,
+        .storeOp = .VK_ATTACHMENT_STORE_OP_STORE,
+        .stencilLoadOp = .VK_ATTACHMENT_LOAD_OP_DONT_CARE,
+        .stencilStoreOp = .VK_ATTACHMENT_STORE_OP_DONT_CARE,
+        .initialLayout = .VK_IMAGE_LAYOUT_UNDEFINED,
+        .finalLayout = .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+        .flags = 0,
     };
 
     const colorAttachmentRef = Vk.c.VkAttachmentReference{
-        .attachment=0,
-        .layout=.VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+        .attachment = 0,
+        .layout = .VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     };
 
     const subpass = Vk.c.VkSubpassDescription{
-        .pipelineBindPoint=.VK_PIPELINE_BIND_POINT_GRAPHICS,
-        .colorAttachmentCount=1,
-        .pColorAttachments=&colorAttachmentRef,
-        .inputAttachmentCount=0,
-        .pInputAttachments=null,
-        .pResolveAttachments=null,
-        .pDepthStencilAttachment=null,
-        .preserveAttachmentCount=0,
-        .pPreserveAttachments=null,
-        .flags=0,
+        .pipelineBindPoint = .VK_PIPELINE_BIND_POINT_GRAPHICS,
+        .colorAttachmentCount = 1,
+        .pColorAttachments = &colorAttachmentRef,
+        .inputAttachmentCount = 0,
+        .pInputAttachments = null,
+        .pResolveAttachments = null,
+        .pDepthStencilAttachment = null,
+        .preserveAttachmentCount = 0,
+        .pPreserveAttachments = null,
+        .flags = 0,
     };
 
     const dependency = Vk.c.VkSubpassDependency{
-        .srcSubpass=Vk.c.VK_SUBPASS_EXTERNAL,
-        .dstSubpass=0,
-        .srcStageMask=Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .srcAccessMask=0,
-        .dstStageMask=Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-        .dstAccessMask=Vk.c.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | Vk.c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
-        .dependencyFlags=0,
+        .srcSubpass = Vk.c.VK_SUBPASS_EXTERNAL,
+        .dstSubpass = 0,
+        .srcStageMask = Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .srcAccessMask = 0,
+        .dstStageMask = Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        .dstAccessMask = Vk.c.VK_ACCESS_COLOR_ATTACHMENT_READ_BIT | Vk.c.VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT,
+        .dependencyFlags = 0,
     };
 
     const renderPassInfo = Vk.c.VkRenderPassCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
-        .pNext=null,
-        .attachmentCount=1,
-        .pAttachments=&colorAttachment,
-        .subpassCount=1,
-        .pSubpasses=&subpass,
-        .dependencyCount=1,
-        .pDependencies=&dependency,
-        .flags=0,
+        .sType = .VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO,
+        .pNext = null,
+        .attachmentCount = 1,
+        .pAttachments = &colorAttachment,
+        .subpassCount = 1,
+        .pSubpasses = &subpass,
+        .dependencyCount = 1,
+        .pDependencies = &dependency,
+        .flags = 0,
     };
 
     var render_pass: Vk.RenderPass = undefined;
@@ -569,15 +566,15 @@ fn createFramebuffers(logical_device: Vk.Device, render_pass: Vk.RenderPass, ima
     const frame_buffers = try allocator.alloc(Vk.Framebuffer, image_views.len);
     for (image_views) |image_view, i| {
         const framebuffer_info = Vk.c.VkFramebufferCreateInfo{
-            .sType=.VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .pNext=null,
-            .flags=0,
-            .renderPass=render_pass,
-            .attachmentCount=1,
-            .pAttachments=&image_view,
-            .width=image_extent.width,
-            .height=image_extent.height,
-            .layers=1,
+            .sType = .VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
+            .pNext = null,
+            .flags = 0,
+            .renderPass = render_pass,
+            .attachmentCount = 1,
+            .pAttachments = &image_view,
+            .width = image_extent.width,
+            .height = image_extent.height,
+            .layers = 1,
         };
         try checkVulkanResult(Vk.c.vkCreateFramebuffer(logical_device, &framebuffer_info, null, @ptrCast(*Vk.c.VkFramebuffer, frame_buffers.ptr + i)));
         // TODO: somehow clean up in case of an error.
@@ -596,11 +593,11 @@ fn destroyFramebuffers(logical_device: Vk.Device, frame_buffers: []Vk.Framebuffe
 fn createCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, frame_buffers: []Vk.Framebuffer, allocator: *mem.Allocator) ![]Vk.CommandBuffer {
     const command_buffers = try allocator.alloc(Vk.CommandBuffer, frame_buffers.len);
     const allocInfo = Vk.c.VkCommandBufferAllocateInfo{
-        .sType=.VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext=null,
-        .commandPool=command_pool,
-        .level=.VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount=@intCast(u32, command_buffers.len),
+        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+        .pNext = null,
+        .commandPool = command_pool,
+        .level = .VK_COMMAND_BUFFER_LEVEL_PRIMARY,
+        .commandBufferCount = @intCast(u32, command_buffers.len),
     };
     try checkVulkanResult(Vk.c.vkAllocateCommandBuffers(logical_device, &allocInfo, @ptrCast(*Vk.c.VkCommandBuffer, command_buffers.ptr)));
     return command_buffers;
@@ -627,9 +624,9 @@ pub const Renderer = struct {
         application_info: ApplicationInfo,
         input_extensions: []const [*:0]const u8,
         allocator: *mem.Allocator,
-        ) !Renderer {
+    ) !Renderer {
         const glfw_extensions = try glfw.getRequiredInstanceExtensions();
-        var extensions = try allocator.alloc([*:0] const u8, glfw_extensions.len + input_extensions.len);
+        var extensions = try allocator.alloc([*:0]const u8, glfw_extensions.len + input_extensions.len);
         defer allocator.free(extensions);
         std.mem.copy([*:0]const u8, extensions, glfw_extensions);
         std.mem.copy([*:0]const u8, extensions[glfw_extensions.len..], input_extensions);
@@ -650,14 +647,14 @@ pub const Renderer = struct {
         errdefer freeCommandBuffers(core_device_data.logical_device, graphics_command_pool, command_buffers);
         errdefer allocator.free(command_buffers);
         return Renderer{
-            .instance=instance,
-            .core_device_data=core_device_data,
-            .graphics_command_pool=graphics_command_pool,
-            .descriptor_pool=descriptor_pool,
-            .render_pass=render_pass,
-            .frame_buffers=frame_buffers,
-            .command_buffers=command_buffers,
-            .allocator=allocator,
+            .instance = instance,
+            .core_device_data = core_device_data,
+            .graphics_command_pool = graphics_command_pool,
+            .descriptor_pool = descriptor_pool,
+            .render_pass = render_pass,
+            .frame_buffers = frame_buffers,
+            .command_buffers = command_buffers,
+            .allocator = allocator,
         };
     }
 
@@ -681,9 +678,13 @@ test "creating a Renderer should succeed" {
     defer window.deinit();
     const renderer = try Renderer.init(
         window,
-        .{.application=.{.name="", .version=.{.major=0, .minor=0, .patch=0}}, .engine=.{.name="", .version=.{.major=0, .minor=0, .patch=0}}},
+        .{
+            .application = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
+            .engine = .{ .name = "", .version = .{ .major = 0, .minor = 0, .patch = 0 } },
+        },
         &[_][*:0]const u8{Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME},
-        testing.allocator);
+        testing.allocator,
+    );
     defer renderer.deinit();
     testing.expect(renderer.frame_buffers.len > 0);
     testing.expect(renderer.command_buffers.len > 0);

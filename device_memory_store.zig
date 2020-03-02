@@ -28,24 +28,23 @@ fn ArrayListExtension(comptime Type: type) type {
     };
 }
 
-fn alignInteger(offset: u64, alignment: u64) u64
-{
-    return (offset + (alignment - 1)) & ~ (alignment - 1);
+fn alignInteger(offset: u64, alignment: u64) u64 {
+    return (offset + (alignment - 1)) & ~(alignment - 1);
 }
 
 fn createBuffer(logical_device: Vk.Device, size: u64, usage: Vk.c.VkBufferUsageFlags) !Vk.Buffer {
     const buffer_info = Vk.c.VkBufferCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
-        .pNext=null,
-        .flags=0,
-        .queueFamilyIndexCount=0,
-        .pQueueFamilyIndices=null,
-        .size=size,
-        .usage=usage,
-        .sharingMode=.VK_SHARING_MODE_EXCLUSIVE,
+        .sType = .VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .queueFamilyIndexCount = 0,
+        .pQueueFamilyIndices = null,
+        .size = size,
+        .usage = usage,
+        .sharingMode = .VK_SHARING_MODE_EXCLUSIVE,
     };
 
-    var buffer : Vk.Buffer = undefined;
+    var buffer: Vk.Buffer = undefined;
     try checkVulkanResult(Vk.c.vkCreateBuffer(logical_device, &buffer_info, null, @ptrCast(*Vk.c.VkBuffer, &buffer)));
     return buffer;
 }
@@ -79,9 +78,9 @@ const DeviceMemoryStore = struct {
         transfer_queue_ownership_semaphore: Vk.Semaphore,
         pub fn init(logical_device: Vk.Device, queues: Queues) !CommandPools {
             return CommandPools{
-                .transfer=try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.transfer_index),
-                .graphics=try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.graphics_index),
-                .transfer_queue_ownership_semaphore=try createSemaphore(logical_device),
+                .transfer = try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.transfer_index),
+                .graphics = try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.graphics_index),
+                .transfer_queue_ownership_semaphore = try createSemaphore(logical_device),
             };
         }
 
@@ -128,7 +127,7 @@ const DeviceMemoryStore = struct {
         self.staging_buffer.deinit(self.logical_device);
         self.buffer_id_generator.deinit();
         var iter = self.read_write_buffer_allocations.iterator();
-        while(iter.next())|kv| {
+        while (iter.next()) |kv| {
             Vk.c.vkDestroyBuffer(self.logical_device, kv.key, null);
             Vk.c.vkFreeMemory(self.logical_device, kv.value.device_memory, null);
         }
@@ -149,7 +148,6 @@ const DeviceMemoryStore = struct {
         mapped: ?[*]u8,
     };
 
-
     fn createNewBuffer(self: *Self, minimum_size: u64, frame_count: u32, properties: BufferMemoryProperties) !BufferID {
         const size_per_frame = alignInteger(std.math.max(minimum_size, self.configuration.default_allocation_size), std.math.max(self.configuration.min_uniform_buffer_offset_alignment, self.configuration.non_coherent_atom_size));
         const size = size_per_frame * frame_count;
@@ -158,18 +156,17 @@ const DeviceMemoryStore = struct {
         const device_pointer = try allocateMemory(self.physical_device, self.logical_device, requirements, properties.properties);
         try checkVulkanResult(Vk.c.vkBindBufferMemory(self.logical_device, buffer, device_pointer, 0));
         try self.read_write_buffer_allocations.putNoClobber(buffer, .{
-            .device_memory=device_pointer,
-            .properties=properties,
-            .size_per_frame=size_per_frame,
-            .used_offset=alignInteger(minimum_size, self.configuration.min_uniform_buffer_offset_alignment),
-            .mapped=null,
-            });
+            .device_memory = device_pointer,
+            .properties = properties,
+            .size_per_frame = size_per_frame,
+            .used_offset = alignInteger(minimum_size, self.configuration.min_uniform_buffer_offset_alignment),
+            .mapped = null,
+        });
         const id = try self.buffer_id_generator.newHandle();
-        try ArrayListExtension(Vk.c.VkDescriptorBufferInfo).assignAtPositionAndResizeIfNecessary(
-            &self.buffer_ranges, id.index, .{
-            .buffer=buffer,
-            .offset=0,
-            .range=minimum_size,
+        try ArrayListExtension(Vk.c.VkDescriptorBufferInfo).assignAtPositionAndResizeIfNecessary(&self.buffer_ranges, id.index, .{
+            .buffer = buffer,
+            .offset = 0,
+            .range = minimum_size,
         });
         return id;
     }
@@ -196,11 +193,10 @@ const DeviceMemoryStore = struct {
             var allocation_info = &kv.value;
             if (std.meta.eql(allocation_info.properties, memory_properties) and hasSpaceInBuffer(size, allocation_info.*)) {
                 const id = try self.buffer_id_generator.newHandle();
-                try ArrayListExtension(Vk.c.VkDescriptorBufferInfo).assignAtPositionAndResizeIfNecessary(
-                    &self.buffer_ranges, id.index, .{
-                    .buffer=kv.key,
-                    .offset=allocation_info.used_offset,
-                    .range=size,
+                try ArrayListExtension(Vk.c.VkDescriptorBufferInfo).assignAtPositionAndResizeIfNecessary(&self.buffer_ranges, id.index, .{
+                    .buffer = kv.key,
+                    .offset = allocation_info.used_offset,
+                    .range = size,
                 });
                 allocation_info.used_offset = alignInteger(allocation_info.used_offset + size, self.configuration.min_uniform_buffer_offset_alignment);
                 return id;
@@ -216,8 +212,7 @@ const DeviceMemoryStore = struct {
         return (allocation.mapped.? + buffer.offset)[0..buffer.range];
     }
 
-    pub fn mapAll(self: Self, frame: u32) !void
-    {
+    pub fn mapAll(self: Self, frame: u32) !void {
         var iter = self.read_write_buffer_allocations.iterator();
         while (iter.next()) |kv| {
             var allocation = &kv.value;
@@ -227,8 +222,8 @@ const DeviceMemoryStore = struct {
                 allocation.size_per_frame * frame,
                 alignInteger(allocation.used_offset, self.configuration.non_coherent_atom_size),
                 0,
-                @ptrCast([*]?*c_void, &allocation.mapped)
-                ));
+                @ptrCast([*]?*c_void, &allocation.mapped),
+            ));
         }
     }
 
@@ -237,11 +232,11 @@ const DeviceMemoryStore = struct {
         while (iter.next()) |kv| {
             var allocation = &kv.value;
             const mapped_range = Vk.c.VkMappedMemoryRange{
-                .sType=.VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
-                .pNext=null,
-                .memory=kv.value.device_memory,
-                .offset=allocation.size_per_frame * frame,
-                .size=alignInteger(allocation.used_offset, self.configuration.non_coherent_atom_size),
+                .sType = .VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
+                .pNext = null,
+                .memory = kv.value.device_memory,
+                .offset = allocation.size_per_frame * frame,
+                .size = alignInteger(allocation.used_offset, self.configuration.non_coherent_atom_size),
             };
             try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, 1, &mapped_range));
             Vk.c.vkUnmapMemory(self.logical_device, allocation.device_memory);
@@ -254,14 +249,12 @@ fn hasSpaceInBuffer(size: u64, allocation: DeviceMemoryStore.ReadWriteBufferAllo
     return allocation.size_per_frame > allocation.used_offset + size;
 }
 
-
-fn findMemoryType(physical_device: Vk.PhysicalDevice, typeFilter: u32, properties: Vk.c.VkMemoryPropertyFlags) !u32
-{
+fn findMemoryType(physical_device: Vk.PhysicalDevice, typeFilter: u32, properties: Vk.c.VkMemoryPropertyFlags) !u32 {
     var memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties = undefined;
     Vk.c.vkGetPhysicalDeviceMemoryProperties(physical_device, &memory_properties);
 
     var i: u32 = 0;
-    while(i < memory_properties.memoryTypeCount) {
+    while (i < memory_properties.memoryTypeCount) {
         if ((typeFilter & (@as(u32, 1) << @intCast(u5, i))) != 0 and ((memory_properties.memoryTypes[i].propertyFlags & properties) == properties)) {
             return i;
         }
@@ -273,12 +266,12 @@ fn findMemoryType(physical_device: Vk.PhysicalDevice, typeFilter: u32, propertie
 
 fn allocateMemory(physical_device: Vk.PhysicalDevice, logical_device: Vk.Device, requirements: Vk.c.VkMemoryRequirements, properties: Vk.c.VkMemoryPropertyFlags) !Vk.DeviceMemory {
     const allocInfo = Vk.c.VkMemoryAllocateInfo{
-        .sType=.VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
-        .pNext=null,
-        .allocationSize=requirements.size,
-        .memoryTypeIndex=try findMemoryType(physical_device, requirements.memoryTypeBits, properties),
+        .sType = .VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
+        .pNext = null,
+        .allocationSize = requirements.size,
+        .memoryTypeIndex = try findMemoryType(physical_device, requirements.memoryTypeBits, properties),
     };
-    var device_pointer : Vk.DeviceMemory = undefined;
+    var device_pointer: Vk.DeviceMemory = undefined;
     try checkVulkanResult(Vk.c.vkAllocateMemory(logical_device, &allocInfo, null, @ptrCast(*Vk.c.VkDeviceMemory, &device_pointer)));
     return device_pointer;
 }
@@ -301,9 +294,9 @@ const StagingBuffer = struct {
         var mapped: [*]u8 = undefined;
         try checkVulkanResult(Vk.c.vkMapMemory(logical_device, device_memory, 0, requirements.size, 0, @ptrCast(*?*c_void, &mapped)));
         return Self{
-            .buffer=buffer,
-            .device_memory=device_memory,
-            .mapped=mapped[0..size],
+            .buffer = buffer,
+            .device_memory = device_memory,
+            .mapped = mapped[0..size],
         };
     }
 
@@ -324,8 +317,8 @@ test "Initializing a device memory store should succeed" {
     defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
-        .default_allocation_size=1e3,
-        .default_staging_buffer_size=1e4,
+        .default_allocation_size = 1e3,
+        .default_staging_buffer_size = 1e4,
     };
     const store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
@@ -334,7 +327,7 @@ test "Initializing a device memory store should succeed" {
 }
 
 fn allocateUniformBuffer(store: *DeviceMemoryStore, size: u64, frame_count: u32) !DeviceMemoryStore.BufferID {
-    return try store.allocateBufferSpace(size, frame_count, .{.usage=Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties=Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT});
+    return try store.allocateBufferSpace(size, frame_count, .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
 }
 
 test "allocating a buffer should succeed" {
@@ -348,8 +341,8 @@ test "allocating a buffer should succeed" {
     defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
-        .default_allocation_size=1e3,
-        .default_staging_buffer_size=1,
+        .default_allocation_size = 1e3,
+        .default_staging_buffer_size = 1,
     };
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
@@ -368,8 +361,8 @@ test "allocating multiple buffers which fit in one allocation should have the sa
     defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
-        .default_allocation_size=1e3,
-        .default_staging_buffer_size=1,
+        .default_allocation_size = 1e3,
+        .default_staging_buffer_size = 1,
     };
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
@@ -393,8 +386,8 @@ test "allocating multiple buffers which do not fit in one allocation should have
     defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
-        .default_allocation_size=1,
-        .default_staging_buffer_size=1,
+        .default_allocation_size = 1,
+        .default_staging_buffer_size = 1,
     };
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
@@ -415,8 +408,8 @@ test "getting mapped pointers for different frames should have an offset of defa
     defer core_graphics_device_data.deinit(instance);
 
     const config = DeviceMemoryStore.ConfigurationRequest{
-        .default_allocation_size=1e3,
-        .default_staging_buffer_size=1,
+        .default_allocation_size = 1e3,
+        .default_staging_buffer_size = 1,
     };
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();

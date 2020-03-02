@@ -2,7 +2,7 @@ const std = @import("std");
 const builtin = std.builtin;
 
 pub fn checkVulkanResult(result: Vk.c.VkResult) !void {
-    return switch(result) {
+    return switch (result) {
         .VK_SUCCESS => void{},
         .VK_NOT_READY => error.VkNotReady,
         .VK_TIMEOUT => error.VkTimeout,
@@ -72,13 +72,12 @@ pub const Vk = struct {
     pub const CommandPoolCreateInfo = c.VkCommandPoolCreateInfo;
 };
 
-
 pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_index: u32) !Vk.CommandPool {
     const poolInfo = Vk.CommandPoolCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext=null,
-        .queueFamilyIndex=transfer_family_index,
-        .flags=flags,
+        .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+        .pNext = null,
+        .queueFamilyIndex = transfer_family_index,
+        .flags = flags,
     };
     var command_pool: Vk.CommandPool = undefined;
     try checkVulkanResult(Vk.c.vkCreateCommandPool(@ptrCast(Vk.c.VkDevice, logical_device), &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
@@ -87,9 +86,9 @@ pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_
 
 pub fn createSemaphore(logical_device: Vk.Device) !Vk.Semaphore {
     const semaphoreInfo = Vk.c.VkSemaphoreCreateInfo{
-        .sType=.VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
-        .pNext=null,
-        .flags=0,
+        .sType = .VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
     };
     var semaphore: Vk.Semaphore = undefined;
     try checkVulkanResult(Vk.c.vkCreateSemaphore(logical_device, &semaphoreInfo, null, @ptrCast(*Vk.c.VkSemaphore, &semaphore)));

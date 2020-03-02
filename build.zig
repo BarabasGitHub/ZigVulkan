@@ -1,7 +1,7 @@
 const build_lib = @import("std").build;
 const Builder = build_lib.Builder;
 
-const GLFWDependencies = [_][]const u8{"c", "user32", "gdi32", "shell32"};
+const GLFWDependencies = [_][]const u8{ "c", "user32", "gdi32", "shell32" };
 const vulkan_library = "E:/Libraries/VulkanSDK/1.1.121.2/Lib/vulkan-1";
 const glfw_library = "E:/Libraries/glfw/build/src/Release/glfw3";
 

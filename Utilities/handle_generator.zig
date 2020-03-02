@@ -10,8 +10,8 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 
         pub fn init(allocator: *mem.Allocator) Self {
             return Self{
-                .valid_generations=std.ArrayList(HandleType.Generation).init(allocator),
-                .discarded_handle_indices=std.ArrayList(HandleType.Index).init(allocator)
+                .valid_generations = std.ArrayList(HandleType.Generation).init(allocator),
+                .discarded_handle_indices = std.ArrayList(HandleType.Index).init(allocator),
             };
         }
 
@@ -22,24 +22,24 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 
         pub fn newHandle(self: *Self) !HandleType {
             if (self.discarded_handle_indices.popOrNull()) |index| {
-                return HandleType{.index=index, .generation=self.valid_generations.at(index)};
+                return HandleType{ .index = index, .generation = self.valid_generations.at(index) };
             }
             const index = @intCast(HandleType.Index, self.valid_generations.len);
             try self.valid_generations.append(0);
-            return HandleType{.generation=0, .index=index};
+            return HandleType{ .generation = 0, .index = index };
         }
 
         pub fn newHandles(self: *Self, handles: []HandleType) !void {
             const reuse_handle_count = std.math.min(self.discarded_handle_indices.len, handles.len);
-            for (handles[0..reuse_handle_count]) |*handle, i|{
+            for (handles[0..reuse_handle_count]) |*handle, i| {
                 const index = self.discarded_handle_indices.at(i);
-                handle.* =.{.index=index, .generation=self.valid_generations.at(index)};
+                handle.* = .{ .index = index, .generation = self.valid_generations.at(index) };
             }
             self.discarded_handle_indices.len = self.discarded_handle_indices.len - reuse_handle_count;
             const index_start = self.valid_generations.len;
             try self.valid_generations.appendNTimes(0, index_start + (handles.len - reuse_handle_count));
-            for (handles[reuse_handle_count..])|*handle, i| {
-                handle.* =.{.index=@intCast(HandleType.Index, index_start+i), .generation=0};
+            for (handles[reuse_handle_count..]) |*handle, i| {
+                handle.* = .{ .index = @intCast(HandleType.Index, index_start + i), .generation = 0 };
             }
         }
 
@@ -51,13 +51,13 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 
         pub fn discardMultiple(self: *Self, handles: []HandleType) !void {
             try self.discarded_handle_indices.ensureCapacity(self.discarded_handle_indices.len + handles.len);
-            for (handles)|handle| {
+            for (handles) |handle| {
                 std.debug.assert(self.valid_generations.at(handle.index) == handle.generation);
             }
-            for (handles)|handle| {
+            for (handles) |handle| {
                 self.valid_generations.set(handle.index, handle.generation +% 1);
             }
-            for (handles)|handle| {
+            for (handles) |handle| {
                 self.discarded_handle_indices.appendAssumeCapacity(handle.index);
             }
         }
@@ -69,7 +69,7 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 }
 
 const testing = std.testing;
-const TestObject = struct{};
+const TestObject = struct {};
 const TestHandle = Handle(TestObject);
 const TestHandleGenerator = HandleGenerator(TestHandle);
 
@@ -108,7 +108,7 @@ test "discarding multiple handles should result in all of them being re-used wit
     defer generator.deinit();
     var handle1 = try generator.newHandle();
     var handle2 = try generator.newHandle();
-    try generator.discardMultiple(&[_]TestHandle{handle1, handle2});
+    try generator.discardMultiple(&[_]TestHandle{ handle1, handle2 });
 
     handle1.generation += 1;
     handle2.generation += 1;

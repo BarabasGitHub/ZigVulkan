@@ -1,8 +1,7 @@
 const glfw = @import("glfw_wrapper.zig");
 usingnamespace @import("vulkan_general.zig");
 
-
-pub const Window = struct{
+pub const Window = struct {
     handle: *glfw.GLFWwindow,
 
     pub fn init(width: u31, height: u31, title: [*:0]const u8) !Window {
@@ -16,10 +15,10 @@ pub const Window = struct{
     }
 
     pub fn getSize(self: Window) !Vk.c.VkExtent2D {
-        var width : i32 = undefined;
-        var height : i32 = undefined;
+        var width: i32 = undefined;
+        var height: i32 = undefined;
         try glfw.getWindowSize(self.handle, &width, &height);
-        return Vk.c.VkExtent2D{.width=@intCast(u32, width), .height=@intCast(u32, height)};
+        return Vk.c.VkExtent2D{ .width = @intCast(u32, width), .height = @intCast(u32, height) };
     }
 };
 
@@ -40,5 +39,5 @@ test "getting the size of the window should work" {
     const window = try Window.init(width, height, "");
     defer window.deinit();
 
-    testing.expectEqual(Vk.c.VkExtent2D{.width=width, .height=height}, try window.getSize());
+    testing.expectEqual(Vk.c.VkExtent2D{ .width = width, .height = height }, try window.getSize());
 }

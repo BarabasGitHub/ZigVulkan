@@ -13,7 +13,7 @@ usingnamespace c;
 const testing = @import("std").testing;
 
 fn getGlfwError() !void {
-    return switch(glfwGetError(null)) {
+    return switch (glfwGetError(null)) {
         GLFW_NO_ERROR => {},
 
         GLFW_NOT_INITIALIZED => error.GlfwNotINitialized,
@@ -52,7 +52,6 @@ test "Initializing glfw multiple times should be fine" {
     try init();
 }
 
-
 pub fn createWindow(width: u31, height: u31, title: [*:0]const u8) !*GLFWwindow {
     glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
     glfwWindowHint(GLFW_RESIZABLE, GLFW_TRUE);
@@ -85,11 +84,11 @@ test "Creating a zero size window must fail" {
 }
 
 // the returned slice is owned by glfw
-pub fn getRequiredInstanceExtensions() ![]const[*:0]const u8 {
-    var glfwExtensionCount : u32 = 0;
+pub fn getRequiredInstanceExtensions() ![]const [*:0]const u8 {
+    var glfwExtensionCount: u32 = 0;
     const extensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
     try getGlfwError();
-    return @ptrCast([*]const[*:0]const u8, extensions)[0..glfwExtensionCount];
+    return @ptrCast([*]const [*:0]const u8, extensions)[0..glfwExtensionCount];
 }
 
 test "Getting the required instance extentions should return at least one extension" {
@@ -110,10 +109,9 @@ test "Getting the window size should succeed" {
     const height = 300;
     const window = try createWindow(width, height, "test");
     defer destroyWindow(window);
-    var width_result : i32 = 0;
-    var height_result : i32 = 0;
+    var width_result: i32 = 0;
+    var height_result: i32 = 0;
     try getWindowSize(window, &width_result, &height_result);
     testing.expectEqual(@as(i32, width), width_result);
     testing.expectEqual(@as(i32, height), height_result);
 }
-
