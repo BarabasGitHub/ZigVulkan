@@ -20,6 +20,10 @@ pub const Window = struct {
         try glfw.getWindowSize(self.handle, &width, &height);
         return Vk.c.VkExtent2D{ .width = @intCast(u32, width), .height = @intCast(u32, height) };
     }
+
+    pub fn show(self: Window) !void {
+        try glfw.showWindow(self.handle);
+    }
 };
 
 const testing = @import("std").testing;

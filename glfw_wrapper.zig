@@ -115,3 +115,8 @@ test "Getting the window size should succeed" {
     testing.expectEqual(@as(i32, width), width_result);
     testing.expectEqual(@as(i32, height), height_result);
 }
+
+pub fn showWindow(window: *GLFWwindow) !void {
+    glfwShowWindow(window);
+    try getGlfwError();
+}

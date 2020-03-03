@@ -607,6 +607,29 @@ fn freeCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, c
     Vk.c.vkFreeCommandBuffers(logical_device, command_pool, @intCast(u32, command_buffers.len), command_buffers.ptr);
 }
 
+const Semaphores = struct {
+    image_available: Vk.Semaphore,
+    render_finished: Vk.Semaphore,
+
+    pub fn init(logical_device: Vk.Device) !Semaphores {
+        var semaphores: Semaphores = undefined;
+        const semaphoreInfo = Vk.c.VkSemaphoreCreateInfo{
+            .sType = .VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,
+            .pNext = null,
+            .flags = 0,
+        };
+        try checkVulkanResult(Vk.c.vkCreateSemaphore(logical_device, &semaphoreInfo, null, @ptrCast(*Vk.c.VkSemaphore, &semaphores.image_available)));
+        errdefer Vk.c.vkDestroySemaphore(logical_device, semaphores.image_available, null);
+        try checkVulkanResult(Vk.c.vkCreateSemaphore(logical_device, &semaphoreInfo, null, @ptrCast(*Vk.c.VkSemaphore, &semaphores.render_finished)));
+        return semaphores;
+    }
+
+    pub fn deinit(self: Semaphores, logical_device: Vk.Device) void {
+        Vk.c.vkDestroySemaphore(logical_device, self.image_available, null);
+        Vk.c.vkDestroySemaphore(logical_device, self.render_finished, null);
+    }
+};
+
 pub const Renderer = struct {
     const Self = @This();
 
@@ -617,6 +640,8 @@ pub const Renderer = struct {
     render_pass: Vk.RenderPass,
     frame_buffers: []Vk.Framebuffer,
     command_buffers: []Vk.CommandBuffer,
+    semaphores: Semaphores,
+    current_render_image_index: u32,
     allocator: *mem.Allocator,
 
     pub fn init(
@@ -646,6 +671,8 @@ pub const Renderer = struct {
         const command_buffers = try createCommandBuffers(core_device_data.logical_device, graphics_command_pool, frame_buffers, allocator);
         errdefer freeCommandBuffers(core_device_data.logical_device, graphics_command_pool, command_buffers);
         errdefer allocator.free(command_buffers);
+        const semaphores = try Semaphores.init(core_device_data.logical_device);
+        errdefer semaphores.deinit();
         return Renderer{
             .instance = instance,
             .core_device_data = core_device_data,
@@ -654,11 +681,14 @@ pub const Renderer = struct {
             .render_pass = render_pass,
             .frame_buffers = frame_buffers,
             .command_buffers = command_buffers,
+            .semaphores = semaphores,
+            .current_render_image_index = 0,
             .allocator = allocator,
         };
     }
 
     pub fn deinit(self: Self) void {
+        _ = Vk.c.vkDeviceWaitIdle(self.core_device_data.logical_device);
         destroyFramebuffers(self.core_device_data.logical_device, self.frame_buffers);
         freeCommandBuffers(self.core_device_data.logical_device, self.graphics_command_pool, self.command_buffers);
         self.allocator.free(self.frame_buffers);
@@ -666,6 +696,7 @@ pub const Renderer = struct {
         destroyRenderPass(self.core_device_data.logical_device, self.render_pass, null);
         destroyDescriptorPool(self.core_device_data.logical_device, self.descriptor_pool, null);
         destroyCommandPool(self.core_device_data.logical_device, self.graphics_command_pool, null);
+        self.semaphores.deinit(self.core_device_data.logical_device);
         self.core_device_data.deinit(self.instance);
         destroyInstance(self.instance, null);
     }
