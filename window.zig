@@ -24,6 +24,10 @@ pub const Window = struct {
     pub fn show(self: Window) !void {
         try glfw.showWindow(self.handle);
     }
+
+    pub fn hide(self: Window) !void {
+        try glfw.hideWindow(self.handle);
+    }
 };
 
 const testing = @import("std").testing;
@@ -44,4 +48,16 @@ test "getting the size of the window should work" {
     defer window.deinit();
 
     testing.expectEqual(Vk.c.VkExtent2D{ .width = width, .height = height }, try window.getSize());
+}
+
+test "showing and hiding the windows should not fail" {
+    try glfw.init();
+    defer glfw.deinit();
+    const width = 200;
+    const height = 300;
+    const window = try Window.init(width, height, "");
+    defer window.deinit();
+
+    try window.show();
+    try window.hide();
 }

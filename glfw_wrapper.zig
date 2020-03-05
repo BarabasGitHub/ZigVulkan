@@ -120,3 +120,8 @@ pub fn showWindow(window: *GLFWwindow) !void {
     glfwShowWindow(window);
     try getGlfwError();
 }
+
+pub fn hideWindow(window: *GLFWwindow) !void {
+    glfwHideWindow(window);
+    try getGlfwError();
+}
