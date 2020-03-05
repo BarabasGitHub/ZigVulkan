@@ -54,46 +54,6 @@ fn fillCommandBuffer(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExten
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
 }
 
-fn updateImageIndex(r: *Renderer) !void {
-    while (true) {
-        if (checkVulkanResult(Vk.c.vkAcquireNextImageKHR(
-            r.core_device_data.logical_device,
-            r.core_device_data.swap_chain.swap_chain,
-            std.math.maxInt(u64),
-            r.semaphores.image_available,
-            null,
-            &r.current_render_image_index,
-        ))) {
-            return;
-        } else |err| switch (err) {
-            error.VkErrorOutOfDateKhr => return err, // recreate swapchain and try again (continue)
-            error.VkSuboptimalKhr => break,
-            else => return err,
-        }
-    }
-}
-
-fn present(r: Renderer) !void {
-    const present_info = Vk.c.VkPresentInfoKHR{
-        .sType = .VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-        .pNext = null,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &r.semaphores.render_finished,
-        .swapchainCount = 1,
-        .pSwapchains = &r.core_device_data.swap_chain.swap_chain,
-        .pImageIndices = &r.current_render_image_index,
-        .pResults = null, // Optional
-    };
-
-    try checkVulkanResult(Vk.c.vkQueueWaitIdle(r.core_device_data.queues.present));
-    if (checkVulkanResult(Vk.c.vkQueuePresentKHR(r.core_device_data.queues.present, &present_info))) {
-        return;
-    } else |err| switch (err) {
-        error.VkErrorOutOfDateKhr, error.VkSuboptimalKhr => return, // recreate swapchain and return
-        else => return err,
-    }
-}
-
 test "render an empty screen" {
     try glfw.init();
     defer glfw.deinit();
@@ -105,7 +65,7 @@ test "render an empty screen" {
     try window.show();
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
-        try updateImageIndex(&renderer);
+        try renderer.updateImageIndex();
         try fillCommandBuffer(
             renderer.render_pass,
             renderer.core_device_data.swap_chain.extent,
@@ -114,6 +74,6 @@ test "render an empty screen" {
             [4]f32{ 0, 0.5, 1, 1 },
         );
         try draw(renderer);
-        try present(renderer);
+        try renderer.present();
     }
 }

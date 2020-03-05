@@ -700,6 +700,46 @@ pub const Renderer = struct {
         self.core_device_data.deinit(self.instance);
         destroyInstance(self.instance, null);
     }
+
+    pub fn present(self: Self) !void {
+        const present_info = Vk.c.VkPresentInfoKHR{
+            .sType = .VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = null,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &self.semaphores.render_finished,
+            .swapchainCount = 1,
+            .pSwapchains = &self.core_device_data.swap_chain.swap_chain,
+            .pImageIndices = &self.current_render_image_index,
+            .pResults = null, // Optional
+        };
+
+        try checkVulkanResult(Vk.c.vkQueueWaitIdle(self.core_device_data.queues.present));
+        if (checkVulkanResult(Vk.c.vkQueuePresentKHR(self.core_device_data.queues.present, &present_info))) {
+            return;
+        } else |err| switch (err) {
+            error.VkErrorOutOfDateKhr, error.VkSuboptimalKhr => return, // recreate swapchain and return
+            else => return err,
+        }
+    }
+
+    pub fn updateImageIndex(self: *Self) !void {
+        while (true) {
+            if (checkVulkanResult(Vk.c.vkAcquireNextImageKHR(
+                self.core_device_data.logical_device,
+                self.core_device_data.swap_chain.swap_chain,
+                std.math.maxInt(u64),
+                self.semaphores.image_available,
+                null,
+                &self.current_render_image_index,
+            ))) {
+                return;
+            } else |err| switch (err) {
+                error.VkErrorOutOfDateKhr => return err, // recreate swapchain and try again (continue)
+                error.VkSuboptimalKhr => break,
+                else => return err,
+            }
+        }
+    }
 };
 
 test "creating a Renderer should succeed" {
