@@ -66,6 +66,8 @@ pub const destroyInstance = Vk.c.vkDestroyInstance;
 
 pub fn destroyTestInstance(instance: Vk.c.VkInstance) void {
     destroyDebugCallback(instance, global_debug_callback_for_testing.?);
+    testing.expectEqual(@as(usize, 0), global_counter_for_warning_messages);
+    global_counter_for_warning_messages = 0;
     global_debug_callback_for_testing = null;
     destroyInstance(instance, null);
 }
@@ -95,19 +97,21 @@ fn debugCallbackPrintingWarnings(
 ) callconv(.C) Vk.c.VkBool32 {
     if (std.cstr.cmp(layer_prefix, "Loader Message") != 0) {
         std.debug.warn("Validation layer({s}): {s}\n", .{ layer_prefix, message });
+        @ptrCast(*usize, @alignCast(@alignOf(usize), user_data)).* += 1;
     }
     return @boolToInt(false);
 }
 
 var global_debug_callback_for_testing: Vk.c.VkDebugReportCallbackEXT = null;
+var global_counter_for_warning_messages: usize = 0;
 
 pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.Instance {
     var extension_list = std.ArrayList([*:0]const u8).init(testing.allocator);
     defer extension_list.deinit();
     try extension_list.append(Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     try extension_list.appendSlice(extensions);
-    var instance = try createInstance(testApplicationInfo(), extension_list.toSlice());
-    global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, null);
+    var instance = try createInstance(testApplicationInfo(), extension_list.span());
+    global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, &global_counter_for_warning_messages);
     return instance;
 }
 
