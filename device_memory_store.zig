@@ -353,7 +353,7 @@ const StagingBuffer = struct {
         errdefer Vk.c.vkFreeMemory(logical_device, device_memory, null);
         try checkVulkanResult(Vk.c.vkBindBufferMemory(logical_device, buffer, device_memory, 0));
         var mapped: [*]u8 = undefined;
-        try checkVulkanResult(Vk.c.vkMapMemory(logical_device, device_memory, 0, requirements.size, 0, @ptrCast(*?*c_void, &mapped)));
+        try checkVulkanResult(Vk.c.vkMapMemory(logical_device, device_memory, 0, size, 0, @ptrCast(*?*c_void, &mapped)));
         return Self{
             .buffer = buffer,
             .device_memory = device_memory,
