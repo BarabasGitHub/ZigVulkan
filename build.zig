@@ -26,7 +26,6 @@ pub fn doCommonStuff(lib_or_tests: var, build_mode: builtin.Mode) void {
     lib_or_tests.addLibPath("C:/Program Files (x86)/Microsoft Visual Studio/2019/Community/VC/Tools/MSVC/14.25.28610/lib/x64");
     lib_or_tests.setBuildMode(build_mode);
     linkVulkanGLFWAndDependencies(lib_or_tests);
-
 }
 
 pub fn build(b: *Builder) void {

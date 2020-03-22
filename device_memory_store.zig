@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
+const debug = std.debug;
 
 usingnamespace @import("Utilities/handle_generator.zig");
 
@@ -120,8 +121,13 @@ const DeviceMemoryStore = struct {
             };
         }
 
-        pub fn getSingleBufferingSize(self: Configuration, minimum_size: u64) u64 {
-            return alignInteger(std.math.max(minimum_size, self.default_allocation_size), std.math.max(self.min_uniform_buffer_offset_alignment, self.non_coherent_atom_size));
+        pub fn getSingleBufferingSize(self: Configuration, requested_size: u64) u64 {
+            return alignInteger(std.math.max(requested_size, self.default_allocation_size), std.math.max(self.min_uniform_buffer_offset_alignment, self.non_coherent_atom_size));
+        }
+
+        pub fn adjustUniformBufferSize(self: Configuration, requsted_size: u64) u64 {
+            debug.assert(requsted_size <= self.maximum_uniform_buffer_size);
+            return alignInteger(requsted_size, self.min_uniform_buffer_offset_alignment);
         }
     };
 
@@ -158,14 +164,13 @@ const DeviceMemoryStore = struct {
         mapped: [*]u8,
 
         pub fn hasSpace(allocation: BufferAllocation, size: u64) bool {
-            return allocation.size > allocation.used + size;
+            return allocation.size >= allocation.used + size;
         }
     };
 
     pub const IdInformation = struct {
         allocation_index: u16,
         size: usize,
-        offset: usize,
     };
 
     pub const BufferID = Handle(Vk.Buffer);
@@ -217,13 +222,13 @@ const DeviceMemoryStore = struct {
         self.id_infos.deinit();
     }
 
-    fn createNewBuffer(self: *Self, minimum_size: u64, properties: BufferMemoryProperties) !BufferID {
-        const size = self.configuration.getSingleBufferingSize(minimum_size);
+    fn createNewAllocation(self: *Self, requested_size: u64, properties: BufferMemoryProperties) !void {
+        const size = self.configuration.getSingleBufferingSize(requested_size);
         const total_size = size * self.configuration.buffering_mode.getBufferCount();
         const buffer = try createBuffer(self.logical_device, total_size, properties.usage);
         errdefer Vk.c.vkDestroyBuffer(self.logical_device, buffer, null);
         const requirements = getBufferMemoryRequirements(self.logical_device, buffer);
-        const device_memory = try allocateMemory(self.physical_device_memory_properties, self.logical_device, requirements, properties.properties);
+        const device_memory = try allocateDeviceMemory(self.physical_device_memory_properties, self.logical_device, requirements, properties.properties);
         errdefer Vk.c.vkFreeMemory(self.logical_device, device_memory, null);
         try checkVulkanResult(Vk.c.vkBindBufferMemory(self.logical_device, buffer, device_memory, 0));
         var mapped_memory: [*]u8 = undefined;
@@ -233,52 +238,49 @@ const DeviceMemoryStore = struct {
             .device_memory = device_memory,
             .properties = properties,
             .size = size,
-            .used = minimum_size,
+            .used = 0,
             .mapped = mapped_memory,
         });
-        errdefer _ = self.buffer_allocations.pop();
+    }
+
+    pub fn reserveBufferSpace(self: *Self, requsted_size: u64, memory_properties: BufferMemoryProperties) !BufferID {
+        const size = self.configuration.adjustUniformBufferSize(requsted_size);
+        const allocation_index = if (self.findSpaceInExistingAllocation(size, memory_properties)) |index| b: {
+            break :b index;
+        } else b: {
+            try self.createNewAllocation(size, memory_properties);
+            break :b self.buffer_allocations.len - 1;
+        };
         const id = try self.buffer_id_generator.newHandle();
         errdefer self.buffer_id_generator.discard(id) catch unreachable;
         try ArrayListExtension(IdInformation).assignAtPositionAndResizeIfNecessary(&self.id_infos, id.index, .{
-            .allocation_index = @intCast(u16, self.buffer_allocations.len - 1),
-            .size = minimum_size,
-            .offset = 0,
+            .allocation_index = @intCast(u16, allocation_index),
+            .size = size,
         });
+        self.buffer_allocations.ptrAt(allocation_index).used += size;
         return id;
-    }
-
-    pub fn reserveBufferSpace(self: *Self, size: u64, memory_properties: BufferMemoryProperties) !BufferID {
-        if (try self.findSpaceInExistingBuffer(size, memory_properties)) |id| {
-            return id;
-        }
-        return self.createNewBuffer(size, memory_properties);
     }
 
     pub fn isValidBufferId(self: Self, id: BufferID) bool {
         return self.buffer_id_generator.isValid(id);
     }
 
-    pub fn findSpaceInExistingBuffer(self: *Self, size: u64, memory_properties: BufferMemoryProperties) !?BufferID {
+    pub fn findSpaceInExistingAllocation(self: *Self, size: u64, memory_properties: BufferMemoryProperties) ?usize {
         for (self.buffer_allocations.span()) |*allocation_info, i| {
             if (std.meta.eql(allocation_info.properties, memory_properties) and allocation_info.hasSpace(size)) {
-                const id = try self.buffer_id_generator.newHandle();
-                try ArrayListExtension(IdInformation).assignAtPositionAndResizeIfNecessary(&self.id_infos, id.index, .{
-                    .allocation_index = @intCast(u16, i),
-                    .size = size,
-                    .offset = allocation_info.used,
-                });
-                allocation_info.used = alignInteger(allocation_info.used + size, self.configuration.min_uniform_buffer_offset_alignment);
-                return id;
+                return i;
             }
         }
         return null;
     }
 
-    pub fn getMappedSlice(self: Self, id: BufferID) []u8 {
-        std.debug.assert(self.isValidBufferId(id));
-        const info = self.id_infos.at(id.index);
-        const allocation = self.buffer_allocations.at(info.allocation_index);
-        return (allocation.mapped + allocation.size * self.buffering_index)[info.offset..info.offset+info.size];
+    pub fn getMappedSlices(self: Self, allocator: *mem.Allocator) ![][]u8 {
+        const slices = try allocator.alloc([]u8, self.buffer_allocations.len);
+        errdefer allocator.free(slices);
+        for (self.buffer_allocations.span()) |allocation, i| {
+            slices[i] = (allocation.mapped + allocation.size * self.buffering_index)[0..allocation.used];
+        }
+        return slices;
     }
 
     pub fn flushAndSwitchBuffers(self: *Self) !void {
@@ -297,14 +299,6 @@ const DeviceMemoryStore = struct {
         self.buffering_index = (self.buffering_index + 1) % self.configuration.buffering_mode.getBufferCount();
     }
 
-    // pub fn getDescriptorBufferInfoOnlyForBufferId(self: Self, frame: u32, buffer_id: BufferID) Vk.c.VkDescriptorBufferInfo {
-    //     std.debug.assert(self.isValidBufferId(buffer_id));
-    //     var buffer_info = self.buffer_ranges.at(buffer_id.index);
-    //     const size_per_frame = self.read_write_buffer_allocations.get(buffer_info.buffer.?).?.value.size_per_frame;
-    //     buffer_info.offset += size_per_frame * frame;
-    //     return buffer_info;
-    // }
-
     fn getVkDescriptorBufferInfoFromAllocationAndBufferingMode(allocation: BufferAllocation, buffering_mode: BufferingMode) Vk.c.VkDescriptorBufferInfo {
         return .{
             .buffer = allocation.buffer,
@@ -314,14 +308,9 @@ const DeviceMemoryStore = struct {
     }
 
     pub fn getVkBufferForBufferId(self: Self, id: BufferID) Vk.Buffer {
-        std.debug.assert(self.isValidBufferId(id));
+        debug.assert(self.isValidBufferId(id));
         return self.buffer_allocations.at(self.id_infos.at(id.index).allocation_index).buffer;
     }
-
-    // pub fn getVkDeviceMemoryForBufferId(self: Self, id: BufferID) Vk.DeviceMemory {
-    //     const buffer = self.getVkBufferForBufferId(id);
-    //     return self.read_write_buffer_allocations.get(buffer).?.value.device_memory;
-    // }
 };
 
 fn findMemoryType(memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, typeFilter: u32, properties: Vk.c.VkMemoryPropertyFlags) !u32 {
@@ -337,7 +326,7 @@ fn findMemoryType(memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, type
     return error.FailedToFindSuitableMemoryType;
 }
 
-fn allocateMemory(physical_device_memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, logical_device: Vk.Device, requirements: Vk.c.VkMemoryRequirements, properties: Vk.c.VkMemoryPropertyFlags) !Vk.DeviceMemory {
+fn allocateDeviceMemory(physical_device_memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, logical_device: Vk.Device, requirements: Vk.c.VkMemoryRequirements, properties: Vk.c.VkMemoryPropertyFlags) !Vk.DeviceMemory {
     const allocInfo = Vk.c.VkMemoryAllocateInfo{
         .sType = .VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
         .pNext = null,
@@ -360,7 +349,7 @@ const StagingBuffer = struct {
         const buffer = try createBuffer(logical_device, size, Vk.c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
         errdefer Vk.c.vkDestroyBuffer(logical_device, buffer, null);
         const requirements = getBufferMemoryRequirements(logical_device, buffer);
-        const device_memory = try allocateMemory(physical_device_memory_properties, logical_device, requirements, Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        const device_memory = try allocateDeviceMemory(physical_device_memory_properties, logical_device, requirements, Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
         errdefer Vk.c.vkFreeMemory(logical_device, device_memory, null);
         try checkVulkanResult(Vk.c.vkBindBufferMemory(logical_device, buffer, device_memory, 0));
         var mapped: [*]u8 = undefined;
@@ -400,7 +389,7 @@ test "Initializing a device memory store should succeed" {
     testing.expect(store.staging_buffer.mapped.len >= config.default_staging_buffer_size);
 }
 
-fn allocateUniformBuffer(store: *DeviceMemoryStore, size: u64) !DeviceMemoryStore.BufferID {
+fn reserveUniformBufferStorage(store: *DeviceMemoryStore, size: u64) !DeviceMemoryStore.BufferID {
     return try store.reserveBufferSpace(size, .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
 }
 
@@ -422,7 +411,7 @@ test "reserving a buffer should succeed" {
     };
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
-    const buffer_id = try allocateUniformBuffer(&store, 100);
+    const buffer_id = try reserveUniformBufferStorage(&store, 100);
     testing.expect(store.isValidBufferId(buffer_id));
 }
 
@@ -446,7 +435,7 @@ test "reserving multiple buffers which fit in one allocation should result in on
     defer store.deinit();
     var buffers: [4]DeviceMemoryStore.BufferID = undefined;
     for (buffers) |*buf| {
-        buf.* = try allocateUniformBuffer(&store, store.configuration.default_allocation_size / (buffers.len * 2));
+        buf.* = try reserveUniformBufferStorage(&store, store.configuration.default_allocation_size / (buffers.len * 2));
     }
     testing.expectEqual(@as(usize, 1), store.buffer_allocations.len);
     for (buffers) |id| {
@@ -473,8 +462,8 @@ test "reserving multiple buffers which do not fit in one allocation should have 
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
 
-    const buffer_id1 = try allocateUniformBuffer(&store, store.configuration.default_allocation_size);
-    const buffer_id2 = try allocateUniformBuffer(&store, store.configuration.default_allocation_size);
+    const buffer_id1 = try reserveUniformBufferStorage(&store, store.configuration.default_allocation_size);
+    const buffer_id2 = try reserveUniformBufferStorage(&store, store.configuration.default_allocation_size);
     testing.expect(store.getVkBufferForBufferId(buffer_id1) != store.getVkBufferForBufferId(buffer_id2));
 }
 
@@ -497,10 +486,13 @@ test "getting mapped pointers for different frames should have an offset of defa
     var store = try DeviceMemoryStore.init(config, core_graphics_device_data, testing.allocator);
     defer store.deinit();
 
-    const buffer_id = try allocateUniformBuffer(&store, 200);
+    const buffer_id = try reserveUniformBufferStorage(&store, 200);
 
-    const slice0 = store.getMappedSlice(buffer_id);
+    const slices0 = try store.getMappedSlices(testing.allocator);
+    defer testing.allocator.free(slices0);
+    testing.expectEqual(@as(usize, 1), slices0.len);
     try store.flushAndSwitchBuffers();
-    const slice1 = store.getMappedSlice(buffer_id);
-    testing.expectEqual(slice0.ptr + store.configuration.default_allocation_size, slice1.ptr);
+    const slices1 = try store.getMappedSlices(testing.allocator);
+    defer testing.allocator.free(slices1);
+    testing.expectEqual(slices0[0].ptr + store.configuration.default_allocation_size, slices1[0].ptr);
 }
