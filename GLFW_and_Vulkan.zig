@@ -6828,7 +6828,7 @@ pub const enum_VkDebugReportFlagBitsEXT = extern enum(c_int) {
 };
 pub const VkDebugReportFlagBitsEXT = enum_VkDebugReportFlagBitsEXT;
 pub const VkDebugReportFlagsEXT = VkFlags;
-pub const PFN_vkDebugReportCallbackEXT = ?fn (VkDebugReportFlagsEXT, VkDebugReportObjectTypeEXT, u64, usize, i32, [*c]const u8, [*c]const u8, ?*c_void) callconv(.C) VkBool32;
+pub const PFN_vkDebugReportCallbackEXT = ?fn (VkDebugReportFlagsEXT, VkDebugReportObjectTypeEXT, u64, usize, i32, [*c]const u8, [*c]const u8, ?*c_void) callconv(.Stdcall) VkBool32;
 pub const struct_VkDebugReportCallbackCreateInfoEXT = extern struct {
     sType: VkStructureType,
     pNext: ?*const c_void,

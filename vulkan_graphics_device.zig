@@ -701,6 +701,24 @@ pub const Renderer = struct {
         destroyInstance(self.instance, null);
     }
 
+    pub fn draw(self: Self) !void {
+        const waitStages = [_]Vk.c.VkPipelineStageFlags{Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
+
+        const submit_info = Vk.c.VkSubmitInfo{
+            .sType = .VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = null,
+            .waitSemaphoreCount = 1,
+            .pWaitSemaphores = &self.semaphores.image_available,
+            .pWaitDstStageMask = &waitStages,
+
+            .commandBufferCount = 1,
+            .pCommandBuffers = &self.command_buffers[self.current_render_image_index],
+            .signalSemaphoreCount = 1,
+            .pSignalSemaphores = &self.semaphores.render_finished,
+        };
+        try checkVulkanResult(Vk.c.vkQueueSubmit(self.core_device_data.queues.graphics, 1, &submit_info, null));
+    }
+
     pub fn present(self: Self) !void {
         const present_info = Vk.c.VkPresentInfoKHR{
             .sType = .VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,

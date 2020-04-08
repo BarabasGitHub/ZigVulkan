@@ -68,6 +68,8 @@ pub const Vk = struct {
     pub const Framebuffer = MakeNonOptional(c.VkFramebuffer);
     pub const CommandBuffer = MakeNonOptional(c.VkCommandBuffer);
     pub const ShaderModule = MakeNonOptional(c.VkShaderModule);
+    pub const Pipeline = MakeNonOptional(c.VkPipeline);
+    pub const PipelineLayout = MakeNonOptional(c.VkPipelineLayout);
 };
 
 pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_index: u32) !Vk.CommandPool {

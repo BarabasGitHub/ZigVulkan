@@ -17,7 +17,7 @@ fn ArrayListExtension(comptime Type: type) type {
         const Self = std.ArrayList(Type);
 
         pub fn ensureSize(self: *Self, size: usize) !void {
-            if (self.len < size) {
+            if (self.items.len < size) {
                 try self.resize(size);
             }
         }
@@ -249,7 +249,7 @@ const DeviceMemoryStore = struct {
             break :b index;
         } else b: {
             try self.createNewAllocation(size, memory_properties);
-            break :b self.buffer_allocations.len - 1;
+            break :b self.buffer_allocations.items.len - 1;
         };
         const id = try self.buffer_id_generator.newHandle();
         errdefer self.buffer_id_generator.discard(id) catch unreachable;
@@ -275,7 +275,7 @@ const DeviceMemoryStore = struct {
     }
 
     pub fn getMappedSlices(self: Self, allocator: *mem.Allocator) ![][]u8 {
-        const slices = try allocator.alloc([]u8, self.buffer_allocations.len);
+        const slices = try allocator.alloc([]u8, self.buffer_allocations.items.len);
         errdefer allocator.free(slices);
         for (self.buffer_allocations.span()) |allocation, i| {
             slices[i] = (allocation.mapped + allocation.size * self.buffering_index)[0..allocation.used];
@@ -284,7 +284,7 @@ const DeviceMemoryStore = struct {
     }
 
     pub fn flushAndSwitchBuffers(self: *Self) !void {
-        var mapped_ranges = try std.ArrayList(Vk.c.VkMappedMemoryRange).initCapacity(self.allocator, self.buffer_allocations.len);
+        var mapped_ranges = try std.ArrayList(Vk.c.VkMappedMemoryRange).initCapacity(self.allocator, self.buffer_allocations.items.len);
         defer mapped_ranges.deinit();
         for (self.buffer_allocations.span()) |allocation| {
             mapped_ranges.appendAssumeCapacity(.{
@@ -295,7 +295,7 @@ const DeviceMemoryStore = struct {
                 .size = alignInteger(allocation.used, self.configuration.non_coherent_atom_size),
             });
         }
-        try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, @intCast(u32, mapped_ranges.len), mapped_ranges.span().ptr));
+        try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, @intCast(u32, mapped_ranges.items.len), mapped_ranges.span().ptr));
         self.buffering_index = (self.buffering_index + 1) % self.configuration.buffering_mode.getBufferCount();
     }
 
@@ -437,7 +437,7 @@ test "reserving multiple buffers which fit in one allocation should result in on
     for (buffers) |*buf| {
         buf.* = try reserveUniformBufferStorage(&store, store.configuration.default_allocation_size / (buffers.len * 2));
     }
-    testing.expectEqual(@as(usize, 1), store.buffer_allocations.len);
+    testing.expectEqual(@as(usize, 1), store.buffer_allocations.items.len);
     for (buffers) |id| {
         testing.expectEqual(store.getVkBufferForBufferId(buffers[0]), store.getVkBufferForBufferId(id));
     }
