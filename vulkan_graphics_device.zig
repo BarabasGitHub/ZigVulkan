@@ -80,6 +80,19 @@ fn isDeviceSuitableForGraphicsAndPresentation(device: Vk.PhysicalDevice, surface
     return (try hasSuitableDeviceQueueFamilies(device, surface, allocator)) and hasAdequateSwapChain(device, surface, allocator);
 }
 
+fn hasDeviceHostVisibleLocalMemory(device: Vk.PhysicalDevice) bool {
+    var memory_properties : Vk.c.VkPhysicalDeviceMemoryProperties = undefined;
+    Vk.c.vkGetPhysicalDeviceMemoryProperties(device, &memory_properties);
+    var i :u32 = 0;
+    while (i < memory_properties.memoryTypeCount): (i += 1) {
+        const local_and_host_visible = @as(u32, (Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
+        if ((memory_properties.memoryTypes[i].propertyFlags & local_and_host_visible) == local_and_host_visible) {
+            return true;
+        }
+    }
+    return false;
+}
+
 pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: Vk.Instance, surface: Vk.SurfaceKHR, allocator: *mem.Allocator) !Vk.PhysicalDevice {
     var device_count: u32 = 0;
     try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, null));
@@ -90,7 +103,7 @@ pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: Vk.Instance,
     defer allocator.free(devices);
     try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*c]Vk.c.VkPhysicalDevice, devices.ptr)));
     for (devices) |device| {
-        if (try isDeviceSuitableForGraphicsAndPresentation(device, surface, allocator)) {
+        if ((try isDeviceSuitableForGraphicsAndPresentation(device, surface, allocator)) and hasDeviceHostVisibleLocalMemory(device)) {
             return device;
         }
     }
