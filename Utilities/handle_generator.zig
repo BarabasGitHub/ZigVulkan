@@ -22,7 +22,7 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 
         pub fn newHandle(self: *Self) !HandleType {
             if (self.discarded_handle_indices.popOrNull()) |index| {
-                return HandleType{ .index = index, .generation = self.valid_generations.at(index) };
+                return HandleType{ .index = index, .generation = self.valid_generations.items[index] };
             }
             const index = @intCast(HandleType.Index, self.valid_generations.items.len);
             try self.valid_generations.append(0);
@@ -32,8 +32,8 @@ pub fn HandleGenerator(comptime HandleType: type) type {
         pub fn newHandles(self: *Self, handles: []HandleType) !void {
             const reuse_handle_count = std.math.min(self.discarded_handle_indices.items.len, handles.len);
             for (handles[0..reuse_handle_count]) |*handle, i| {
-                const index = self.discarded_handle_indices.at(i);
-                handle.* = .{ .index = index, .generation = self.valid_generations.at(index) };
+                const index = self.discarded_handle_indices.items[i];
+                handle.* = .{ .index = index, .generation = self.valid_generations.items[index] };
             }
             self.discarded_handle_indices.items.len = self.discarded_handle_indices.items.len - reuse_handle_count;
             const index_start = self.valid_generations.items.len;
@@ -45,17 +45,17 @@ pub fn HandleGenerator(comptime HandleType: type) type {
 
         pub fn discard(self: *Self, handle: HandleType) !void {
             try self.discarded_handle_indices.append(handle.index);
-            std.debug.assert(self.valid_generations.at(handle.index) == handle.generation);
-            self.valid_generations.set(handle.index, handle.generation +% 1);
+            std.debug.assert(self.valid_generations.items[handle.index] == handle.generation);
+            self.valid_generations.items[handle.index] = handle.generation +% 1;
         }
 
         pub fn discardMultiple(self: *Self, handles: []HandleType) !void {
             try self.discarded_handle_indices.ensureCapacity(self.discarded_handle_indices.items.len + handles.len);
             for (handles) |handle| {
-                std.debug.assert(self.valid_generations.at(handle.index) == handle.generation);
+                std.debug.assert(self.valid_generations.items[handle.index] == handle.generation);
             }
             for (handles) |handle| {
-                self.valid_generations.set(handle.index, handle.generation +% 1);
+                self.valid_generations.items[handle.index] = handle.generation +% 1;
             }
             for (handles) |handle| {
                 self.discarded_handle_indices.appendAssumeCapacity(handle.index);
@@ -63,7 +63,7 @@ pub fn HandleGenerator(comptime HandleType: type) type {
         }
 
         pub fn isValid(self: Self, handle: HandleType) bool {
-            return self.valid_generations.at(handle.index) == handle.generation;
+            return self.valid_generations.items[handle.index] == handle.generation;
         }
     };
 }

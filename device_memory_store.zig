@@ -24,7 +24,7 @@ fn ArrayListExtension(comptime Type: type) type {
 
         pub fn assignAtPositionAndResizeIfNecessary(self: *Self, index: usize, value: Type) !void {
             try ensureSize(self, index + 1);
-            self.set(index, value);
+            self.items[index] = value;
         }
     };
 }
@@ -257,7 +257,7 @@ const DeviceMemoryStore = struct {
             .allocation_index = @intCast(u16, allocation_index),
             .size = size,
         });
-        self.buffer_allocations.ptrAt(allocation_index).used += size;
+        self.buffer_allocations.items[allocation_index].used += size;
         return id;
     }
 
@@ -309,7 +309,7 @@ const DeviceMemoryStore = struct {
 
     pub fn getVkBufferForBufferId(self: Self, id: BufferID) Vk.Buffer {
         debug.assert(self.isValidBufferId(id));
-        return self.buffer_allocations.at(self.id_infos.at(id.index).allocation_index).buffer;
+        return self.buffer_allocations.items[self.id_infos.items[id.index].allocation_index].buffer;
     }
 };
 
