@@ -9735,7 +9735,7 @@ pub const VK_EXT_SHADER_SUBGROUP_VOTE_SPEC_VERSION = 1;
 pub const VK_NULL_HANDLE = 0;
 pub const GLFW_JOYSTICK_1 = 0;
 pub const VK_AMD_GPU_SHADER_HALF_FLOAT_EXTENSION_NAME = "VK_AMD_gpu_shader_half_float";
-pub inline fn __INTN_C(n: var, v: var) @TypeOf(__stdint_join3(INT, n, _C(v))) {
+pub inline fn __INTN_C(n: anytype, v: anytype) @TypeOf(__stdint_join3(INT, n, _C(v))) {
     return __stdint_join3(INT, n, _C(v));
 }
 pub const VK_KHR_SHADER_FLOAT_CONTROLS_EXTENSION_NAME = "VK_KHR_shader_float_controls";
@@ -9832,7 +9832,7 @@ pub const VK_QUEUE_FAMILY_EXTERNAL_KHR = VK_QUEUE_FAMILY_EXTERNAL;
 pub const __INT_LEAST8_MAX = INT64_MAX;
 pub const VK_KHR_8BIT_STORAGE_SPEC_VERSION = 1;
 pub const VK_EXT_SWAPCHAIN_COLOR_SPACE_EXTENSION_NAME = "VK_EXT_swapchain_colorspace";
-pub inline fn INT32_C(v: var) @TypeOf(__int_c(v, __int32_c_suffix)) {
+pub inline fn INT32_C(v: anytype) @TypeOf(__int_c(v, __int32_c_suffix)) {
     return __int_c(v, __int32_c_suffix);
 }
 pub const GLFW_HAT_RIGHT = 2;
@@ -9908,7 +9908,7 @@ pub const VK_AMD_gpu_shader_half_float = 1;
 pub const GLFW_MOD_NUM_LOCK = 0x0020;
 pub const GLFW_MOUSE_BUTTON_5 = 4;
 pub const VK_EXT_SHADER_SUBGROUP_BALLOT_EXTENSION_NAME = "VK_EXT_shader_subgroup_ballot";
-pub inline fn INTMAX_C(v: var) @TypeOf(__int_c(v, __INTMAX_C_SUFFIX__)) {
+pub inline fn INTMAX_C(v: anytype) @TypeOf(__int_c(v, __INTMAX_C_SUFFIX__)) {
     return __int_c(v, __INTMAX_C_SUFFIX__);
 }
 pub const __MOVBE__ = 1;
@@ -9925,7 +9925,7 @@ pub const __UINTPTR_MAX__ = @as(c_ulonglong, 18446744073709551615);
 pub const __UINT_FAST32_FMTx__ = "x";
 pub const VK_NV_sample_mask_override_coverage = 1;
 pub const __PTRDIFF_FMTd__ = "lld";
-pub inline fn UINT8_C(v: var) @TypeOf(__uint_c(v, __int8_c_suffix)) {
+pub inline fn UINT8_C(v: anytype) @TypeOf(__uint_c(v, __int8_c_suffix)) {
     return __uint_c(v, __int8_c_suffix);
 }
 pub const GLFW_KEY_RIGHT_BRACKET = 93;
@@ -9991,7 +9991,7 @@ pub const VK_AMD_SHADER_IMAGE_LOAD_STORE_LOD_SPEC_VERSION = 1;
 pub const UINT8_MAX = UINT8_C(255);
 pub const VK_EXT_queue_family_foreign = 1;
 pub const __UINT_FAST8_FMTX__ = "hhX";
-pub inline fn VK_VERSION_MINOR(version: var) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 12 & 0x3ff) {
+pub inline fn VK_VERSION_MINOR(version: anytype) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 12 & 0x3ff) {
     return if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 12 & 0x3ff;
 }
 pub const VK_EXT_shader_stencil_export = 1;
@@ -10089,7 +10089,7 @@ pub const __DBL_MAX__ = 1.7976931348623157e+308;
 pub const VK_NV_DEDICATED_ALLOCATION_IMAGE_ALIASING_SPEC_VERSION = 1;
 pub const __CHAR_BIT__ = 8;
 pub const __DBL_DECIMAL_DIG__ = 17;
-pub inline fn VK_VERSION_MAJOR(version: var) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 22) {
+pub inline fn VK_VERSION_MAJOR(version: anytype) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 22) {
     return if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) >> 22;
 }
 pub const __UINT_LEAST8_FMTx__ = "hhx";
@@ -10171,7 +10171,7 @@ pub const __UINT_FAST16_FMTX__ = "hX";
 pub const VK_AMD_BUFFER_MARKER_EXTENSION_NAME = "VK_AMD_buffer_marker";
 pub const GLFW_GAMEPAD_BUTTON_SQUARE = GLFW_GAMEPAD_BUTTON_X;
 pub const __FLT_DECIMAL_DIG__ = 9;
-pub inline fn UINT64_C(v: var) @TypeOf(__uint_c(v, __int64_c_suffix)) {
+pub inline fn UINT64_C(v: anytype) @TypeOf(__uint_c(v, __int64_c_suffix)) {
     return __uint_c(v, __int64_c_suffix);
 }
 pub const VK_KHR_DRAW_INDIRECT_COUNT_EXTENSION_NAME = "VK_KHR_draw_indirect_count";
@@ -10238,12 +10238,12 @@ pub const VK_KHR_EXTERNAL_FENCE_CAPABILITIES_EXTENSION_NAME = "VK_KHR_external_f
 pub const VK_EXT_filter_cubic = 1;
 pub const __UINT_FAST16_FMTo__ = "ho";
 pub const VK_AMD_device_coherent_memory = 1;
-pub inline fn UINT16_C(v: var) @TypeOf(__uint_c(v, __int16_c_suffix)) {
+pub inline fn UINT16_C(v: anytype) @TypeOf(__uint_c(v, __int16_c_suffix)) {
     return __uint_c(v, __int16_c_suffix);
 }
 pub const GLFW_ACCUM_GREEN_BITS = 0x00021008;
 pub const VK_NV_GEOMETRY_SHADER_PASSTHROUGH_EXTENSION_NAME = "VK_NV_geometry_shader_passthrough";
-pub inline fn offsetof(t: var, d: var) @TypeOf(__builtin_offsetof(t, d)) {
+pub inline fn offsetof(t: anytype, d: anytype) @TypeOf(__builtin_offsetof(t, d)) {
     return __builtin_offsetof(t, d);
 }
 pub const VK_KHR_VULKAN_MEMORY_MODEL_EXTENSION_NAME = "VK_KHR_vulkan_memory_model";
@@ -10269,7 +10269,7 @@ pub const GLFW_KEY_KP_6 = 326;
 pub const __UINT32_C_SUFFIX__ = U;
 pub const VK_MAX_PHYSICAL_DEVICE_NAME_SIZE = 256;
 pub const VK_NV_GEOMETRY_SHADER_PASSTHROUGH_SPEC_VERSION = 1;
-pub inline fn INT8_C(v: var) @TypeOf(__int_c(v, __int8_c_suffix)) {
+pub inline fn INT8_C(v: anytype) @TypeOf(__int_c(v, __int8_c_suffix)) {
     return __int_c(v, __int8_c_suffix);
 }
 pub const VK_EXT_fragment_shader_interlock = 1;
@@ -10305,7 +10305,7 @@ pub const __INT64_MAX__ = @as(c_longlong, 9223372036854775807);
 pub const GLFW_CONNECTED = 0x00040001;
 pub const VK_KHR_UNIFORM_BUFFER_STANDARD_LAYOUT_SPEC_VERSION = 1;
 pub const VK_EXT_SHADER_STENCIL_EXPORT_EXTENSION_NAME = "VK_EXT_shader_stencil_export";
-pub inline fn INT64_C(v: var) @TypeOf(__int_c(v, __int64_c_suffix)) {
+pub inline fn INT64_C(v: anytype) @TypeOf(__int_c(v, __int64_c_suffix)) {
     return __int_c(v, __int64_c_suffix);
 }
 pub const __INT_FAST16_MAX__ = 32767;
@@ -10332,7 +10332,7 @@ pub const GLFW_KEY_T = 84;
 pub const VK_INTEL_SHADER_INTEGER_FUNCTIONS_2_EXTENSION_NAME = "VK_INTEL_shader_integer_functions2";
 pub const VK_EXT_INDEX_TYPE_UINT8_SPEC_VERSION = 1;
 pub const GLFW_HAND_CURSOR = 0x00036004;
-pub inline fn __INTN_MAX(n: var) @TypeOf(__stdint_join3(INT, n, _MAX)) {
+pub inline fn __INTN_MAX(n: anytype) @TypeOf(__stdint_join3(INT, n, _MAX)) {
     return __stdint_join3(INT, n, _MAX);
 }
 pub const GLFW_GAMEPAD_AXIS_RIGHT_Y = 3;
@@ -10378,7 +10378,7 @@ pub const GLFW_KEY_PRINT_SCREEN = 283;
 pub const GLFW_JOYSTICK_11 = 10;
 pub const GLFW_GAMEPAD_BUTTON_DPAD_LEFT = 14;
 pub const __UINT_LEAST32_FMTo__ = "o";
-pub inline fn __INTN_MIN(n: var) @TypeOf(__stdint_join3(INT, n, _MIN)) {
+pub inline fn __INTN_MIN(n: anytype) @TypeOf(__stdint_join3(INT, n, _MIN)) {
     return __stdint_join3(INT, n, _MIN);
 }
 pub const UINT_FAST8_MAX = __UINT_LEAST8_MAX;
@@ -10392,7 +10392,7 @@ pub const __SEG_FS = 1;
 pub const VK_KHR_16BIT_STORAGE_EXTENSION_NAME = "VK_KHR_16bit_storage";
 pub const VK_EXT_TEXTURE_COMPRESSION_ASTC_HDR_EXTENSION_NAME = "VK_EXT_texture_compression_astc_hdr";
 pub const __UINT_FAST8_FMTo__ = "hho";
-pub inline fn VK_MAKE_VERSION(major: var, minor: var, patch: var) @TypeOf(major << 22 | minor << 12 | patch) {
+pub inline fn VK_MAKE_VERSION(major: anytype, minor: anytype, patch: anytype) @TypeOf(major << 22 | minor << 12 | patch) {
     return major << 22 | minor << 12 | patch;
 }
 pub const GLFW_JOYSTICK_7 = 6;
@@ -10439,7 +10439,7 @@ pub const GLFW_KEY_F19 = 308;
 pub const VK_SUBPASS_EXTERNAL = ~@as(c_uint, 0);
 pub const __SSE4_1__ = 1;
 pub const VK_NV_COVERAGE_REDUCTION_MODE_EXTENSION_NAME = "VK_NV_coverage_reduction_mode";
-pub inline fn VK_VERSION_PATCH(version: var) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) & 0xfff) {
+pub inline fn VK_VERSION_PATCH(version: anytype) @TypeOf(if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) & 0xfff) {
     return if (@typeId(@TypeOf(version)) == .Pointer) @ptrCast(uint32_t, version) else if (@typeId(@TypeOf(version)) == .Int) @intToPtr(uint32_t, version) else @as(uint32_t, version) & 0xfff;
 }
 pub const __INT_FAST64_FMTd__ = "lld";
@@ -10459,7 +10459,7 @@ pub const VK_NVX_IMAGE_VIEW_HANDLE_SPEC_VERSION = 1;
 pub const VK_EXT_DEBUG_REPORT_SPEC_VERSION = 9;
 pub const __amd64__ = 1;
 pub const GLFW_VRESIZE_CURSOR = 0x00036006;
-pub inline fn INT16_C(v: var) @TypeOf(__int_c(v, __int16_c_suffix)) {
+pub inline fn INT16_C(v: anytype) @TypeOf(__int_c(v, __int16_c_suffix)) {
     return __int_c(v, __int16_c_suffix);
 }
 pub const GLFW_HAT_CENTERED = 0;
@@ -10485,7 +10485,7 @@ pub const GLFW_KEY_END = 269;
 pub const __INT_LEAST32_MIN = INT64_MIN;
 pub const GLFW_KEY_F5 = 294;
 pub const GLFW_KEY_D = 68;
-pub inline fn __int_c(v: var, suffix: var) @TypeOf(__int_c_join(v, suffix)) {
+pub inline fn __int_c(v: anytype, suffix: anytype) @TypeOf(__int_c_join(v, suffix)) {
     return __int_c_join(v, suffix);
 }
 pub const VK_KHR_STORAGE_BUFFER_STORAGE_CLASS_SPEC_VERSION = 1;
@@ -10550,7 +10550,7 @@ pub const __amd64 = 1;
 pub const VK_NV_EXTERNAL_MEMORY_EXTENSION_NAME = "VK_NV_external_memory";
 pub const VK_EXT_QUEUE_FAMILY_FOREIGN_EXTENSION_NAME = "VK_EXT_queue_family_foreign";
 pub const __UINT_LEAST8_MAX = UINT64_MAX;
-pub inline fn __UINTN_C(n: var, v: var) @TypeOf(__stdint_join3(UINT, n, _C(v))) {
+pub inline fn __UINTN_C(n: anytype, v: anytype) @TypeOf(__stdint_join3(UINT, n, _C(v))) {
     return __stdint_join3(UINT, n, _C(v));
 }
 pub const __INT_FAST32_MAX__ = 2147483647;
@@ -10684,7 +10684,7 @@ pub const __FLT_MIN_10_EXP__ = -37;
 pub const GLFW_KEY_PAGE_UP = 266;
 pub const GLFW_KEY_UP = 265;
 pub const __SIZEOF_POINTER__ = 8;
-pub inline fn UINT32_C(v: var) @TypeOf(__uint_c(v, __int32_c_suffix)) {
+pub inline fn UINT32_C(v: anytype) @TypeOf(__uint_c(v, __int32_c_suffix)) {
     return __uint_c(v, __int32_c_suffix);
 }
 pub const GLFW_GAMEPAD_BUTTON_BACK = 6;
@@ -10810,7 +10810,7 @@ pub const __OPENCL_MEMORY_SCOPE_ALL_SVM_DEVICES = 3;
 pub const __INT8_FMTi__ = "hhi";
 pub const VK_MAX_DEVICE_GROUP_SIZE_KHR = VK_MAX_DEVICE_GROUP_SIZE;
 pub const GLFW_KEY_KP_8 = 328;
-pub inline fn UINTMAX_C(v: var) @TypeOf(__int_c(v, __UINTMAX_C_SUFFIX__)) {
+pub inline fn UINTMAX_C(v: anytype) @TypeOf(__int_c(v, __UINTMAX_C_SUFFIX__)) {
     return __int_c(v, __UINTMAX_C_SUFFIX__);
 }
 pub const GLFW_CONTEXT_NO_ERROR = 0x0002200A;
@@ -10875,7 +10875,7 @@ pub const GLFW_PLATFORM_ERROR = 0x00010008;
 pub const GLFW_SCALE_TO_MONITOR = 0x0002200C;
 pub const VK_EXT_SAMPLER_FILTER_MINMAX_SPEC_VERSION = 2;
 pub const __RDSEED__ = 1;
-pub inline fn __UINTN_MAX(n: var) @TypeOf(__stdint_join3(UINT, n, _MAX)) {
+pub inline fn __UINTN_MAX(n: anytype) @TypeOf(__stdint_join3(UINT, n, _MAX)) {
     return __stdint_join3(UINT, n, _MAX);
 }
 pub const VK_EXT_INDEX_TYPE_UINT8_EXTENSION_NAME = "VK_EXT_index_type_uint8";

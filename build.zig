@@ -22,7 +22,7 @@ fn linkVulkanGLFWAndDependencies(step: *build_lib.LibExeObjStep) void {
     }
 }
 
-fn doCommonStuff(lib_or_tests: var, build_mode: builtin.Mode) void {
+fn doCommonStuff(lib_or_tests: anytype, build_mode: builtin.Mode) void {
     lib_or_tests.addIncludeDir(".");
     lib_or_tests.addPackagePath("ZigZag", "../ZigZag/main.zig");
     lib_or_tests.setBuildMode(build_mode);

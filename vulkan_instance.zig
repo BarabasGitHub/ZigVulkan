@@ -124,11 +124,11 @@ test "Creating a Vulkan instance without non-existing extensions should fail wit
     testing.expectError(error.VkErrorExtensionNotPresent, createTestInstance(&[_][*:0]const u8{"non-existing extension"}));
 }
 
-fn createDebugCallback(instance: Vk.c.VkInstance, user_callback: @typeInfo(Vk.c.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: var) !Vk.c.VkDebugReportCallbackEXT {
+fn createDebugCallback(instance: Vk.c.VkInstance, user_callback: @typeInfo(Vk.c.PFN_vkDebugReportCallbackEXT).Optional.child, user_data: anytype) !Vk.c.VkDebugReportCallbackEXT {
     return createDebugCallbackWichCanFail(instance, user_callback, user_data);
 }
 
-fn createDebugCallbackWichCanFail(instance: Vk.c.VkInstance, user_callback: Vk.c.PFN_vkDebugReportCallbackEXT, user_data: var) !Vk.c.VkDebugReportCallbackEXT {
+fn createDebugCallbackWichCanFail(instance: Vk.c.VkInstance, user_callback: Vk.c.PFN_vkDebugReportCallbackEXT, user_data: anytype) !Vk.c.VkDebugReportCallbackEXT {
     var createInfo = Vk.c.VkDebugReportCallbackCreateInfoEXT{
         .sType = Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEBUG_REPORT_CALLBACK_CREATE_INFO_EXT,
         .pNext = null,
