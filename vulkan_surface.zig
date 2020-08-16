@@ -28,6 +28,7 @@ test "Creating a surface should succeed" {
 }
 
 // this test somehow makes the next test fail... =/
+// not anymore???
 test "Creating a surface without the required instance extensions should fail" {
     try glfw.init();
     defer glfw.deinit();

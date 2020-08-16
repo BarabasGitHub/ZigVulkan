@@ -81,10 +81,10 @@ fn isDeviceSuitableForGraphicsAndPresentation(device: Vk.PhysicalDevice, surface
 }
 
 fn hasDeviceHostVisibleLocalMemory(device: Vk.PhysicalDevice) bool {
-    var memory_properties : Vk.c.VkPhysicalDeviceMemoryProperties = undefined;
+    var memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties = undefined;
     Vk.c.vkGetPhysicalDeviceMemoryProperties(device, &memory_properties);
-    var i :u32 = 0;
-    while (i < memory_properties.memoryTypeCount): (i += 1) {
+    var i: u32 = 0;
+    while (i < memory_properties.memoryTypeCount) : (i += 1) {
         const local_and_host_visible = @as(u32, (Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT));
         if ((memory_properties.memoryTypes[i].propertyFlags & local_and_host_visible) == local_and_host_visible) {
             return true;
@@ -123,11 +123,11 @@ test "finding a physical device suitable for graphics and presenting should succ
 }
 
 pub const Queues = struct {
-    graphics: std.meta.Child(Vk.c.VkQueue),
+    graphics: Vk.Queue,
     graphics_index: u16,
-    present: std.meta.Child(Vk.c.VkQueue),
+    present: Vk.Queue,
     present_index: u16,
-    transfer: std.meta.Child(Vk.c.VkQueue),
+    transfer: Vk.Queue,
     transfer_index: u16,
 };
 
