@@ -42,7 +42,7 @@ pub fn checkVulkanResult(result: Vk.c.VkResult) !void {
         // .VK_RESULT_END_RANGE => error.VkResultEndRange,
         .VK_RESULT_RANGE_SIZE => error.VkResultRangeSize,
         .VK_RESULT_MAX_ENUM => error.VkResultMaxEnum,
-        _ => error.VKUnknownError,
+        else => error.VKUnknownError,
     };
 }
 
@@ -71,6 +71,9 @@ pub const Vk = struct {
     pub const Pipeline = MakeNonOptional(c.VkPipeline);
     pub const PipelineLayout = MakeNonOptional(c.VkPipelineLayout);
     pub const Queue = MakeNonOptional(c.VkQueue);
+    pub const DescriptorSetLayout = MakeNonOptional(c.VkDescriptorSetLayout);
+    pub const DescriptorSet = MakeNonOptional(c.VkDescriptorSet);
+    pub const Sampler = MakeNonOptional(c.VkSampler);
 };
 
 pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_index: u32) !Vk.CommandPool {

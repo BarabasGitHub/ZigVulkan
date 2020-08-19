@@ -84,7 +84,7 @@ fn getImageMemoryRequirements(logical_device: Vk.Device, image: Vk.Image) Vk.c.V
 //      Put everything in as few buffers as possible. It's possible to only have one binding on my AMD card for example and just use the offset to select where to start.
 //      However on the Intel GPU the max offset is rather low (2047 bytes), so there we probably have to set descriptors for every mesh or so?
 //      It might be possible to use vkCmdDraw(... firstVertex ...) or vkCmdDrawIndexed(... vertexOffset ...) to select data in the buffer??
-const DeviceMemoryStore = struct {
+pub const DeviceMemoryStore = struct {
     const Self = @This();
 
     pub const BufferingMode = enum {
@@ -825,6 +825,6 @@ test "Uploading a 2d image should succeed" {
     defer store.deinit();
 
     const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
-    const data = [_]u8{ 0x05, 0x80, 0xF0, 0xFF } ** (32 * 32);
-    try store.uploadImage2D(u8, image_id, 32 * 4, 32, &data, env.core_graphics_device_data.queues);
+    const data = [_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32);
+    try store.uploadImage2D([4]u8, image_id, 32, 32, &data, env.core_graphics_device_data.queues);
 }

@@ -59,6 +59,8 @@ pub fn build(b: *Builder) !void {
     doCommonStuff(main_tests, mode);
     main_tests.step.dependOn(&(try addShader(b, "fixed_rectangle.vert.hlsl", "fixed_rectangle.vert.spr")).step);
     main_tests.step.dependOn(&(try addShader(b, "white.frag.hlsl", "white.frag.spr")).step);
+    main_tests.step.dependOn(&(try addShader(b, "fixed_uv_rectangle.vert.hlsl", "fixed_uv_rectangle.vert.spr")).step);
+    main_tests.step.dependOn(&(try addShader(b, "textured.frag.hlsl", "textured.frag.spr")).step);
 
     const test_step = b.step("test", "Run library tests");
     test_step.dependOn(&main_tests.step);

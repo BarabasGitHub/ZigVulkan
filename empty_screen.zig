@@ -8,6 +8,7 @@ usingnamespace @import("vulkan_general.zig");
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
 usingnamespace @import("vulkan_shader.zig");
+usingnamespace @import("device_memory_store.zig");
 
 fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, clear_color: [4]f32) !void {
     const beginInfo = Vk.c.VkCommandBufferBeginInfo{
@@ -44,6 +45,8 @@ test "render an empty screen" {
     defer window.deinit();
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
+    try setDebugCallBack(renderer.instance);
+    defer cleanUpDebugCallBack(renderer.instance);
 
     try window.show();
     var i: u32 = 0;
@@ -61,7 +64,16 @@ test "render an empty screen" {
     }
 }
 
-fn fillCommandBuffer(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, graphics_pipeline: Vk.Pipeline, clear_color: [4]f32) !void {
+fn fillCommandBuffer(
+    render_pass: Vk.RenderPass,
+    swap_chain_extent: Vk.c.VkExtent2D,
+    frame_buffer: Vk.Framebuffer,
+    command_buffer: Vk.CommandBuffer,
+    graphics_pipeline: Vk.Pipeline,
+    graphics_pipeline_layout: Vk.PipelineLayout,
+    descriptor_sets: []Vk.DescriptorSet,
+    clear_color: [4]f32,
+) !void {
     const beginInfo = Vk.c.VkCommandBufferBeginInfo{
         .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
         .pNext = null,
@@ -85,6 +97,8 @@ fn fillCommandBuffer(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExten
     Vk.c.vkCmdBeginRenderPass(command_buffer, &renderPassInfo, .VK_SUBPASS_CONTENTS_INLINE);
 
     Vk.c.vkCmdBindPipeline(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+
+    Vk.c.vkCmdBindDescriptorSets(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0, @intCast(u32, descriptor_sets.len), descriptor_sets.ptr, 0, null);
 
     Vk.c.vkCmdDraw(command_buffer, 6, 1, 0, 0);
 
@@ -124,13 +138,13 @@ fn createGraphicsPipelineAndLayout(
     shader_stages: []const Vk.c.VkPipelineShaderStageCreateInfo,
 ) !PipelineAndLayout {
     const vertex_input_info: Vk.c.VkPipelineVertexInputStateCreateInfo = .{
-    .sType = .VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
-    .pNext = null,
-    .flags = 0,
-    .vertexBindingDescriptionCount = 0,
-    .vertexAttributeDescriptionCount = 0,
-    .pVertexBindingDescriptions = null,
-    .pVertexAttributeDescriptions = null,
+        .sType = .VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .vertexBindingDescriptionCount = 0,
+        .vertexAttributeDescriptionCount = 0,
+        .pVertexBindingDescriptions = null,
+        .pVertexAttributeDescriptions = null,
     };
 
     const input_assembly: Vk.c.VkPipelineInputAssemblyStateCreateInfo = .{
@@ -215,7 +229,6 @@ fn createGraphicsPipelineAndLayout(
     const pipeline_layout = try createPipelineLayout(logical_device, descriptor_set_layouts);
     errdefer destroyPipelineLayout(logical_device, pipeline_layout, null);
 
-
     const pipelineInfo: Vk.c.VkGraphicsPipelineCreateInfo = .{
         .sType = .VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO,
         .pNext = null,
@@ -256,16 +269,18 @@ fn createShaderModuleFromEmbeddedFile(comptime file: []const u8, logical_device:
     return createShaderModule(std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), logical_device);
 }
 
-test "render one rectangle" {
+test "render one plain rectangle" {
     try glfw.init();
     defer glfw.deinit();
     const window = try Window.init(200, 200, "test_window");
     defer window.deinit();
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
+    try setDebugCallBack(renderer.instance);
+    defer cleanUpDebugCallBack(renderer.instance);
 
     const descriptor_set_layouts = [_]Vk.c.VkDescriptorSetLayout{};
-    var shader_stages : [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
+    var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
     const fixed_rectangle = try createShaderModuleFromEmbeddedFile("Shaders/fixed_rectangle.vert.spr", renderer.core_device_data.logical_device);
     defer destroyShaderModule(renderer.core_device_data.logical_device, fixed_rectangle, null);
@@ -275,10 +290,10 @@ test "render one rectangle" {
         .pNext = null,
         .flags = 0,
         .stage = .VK_SHADER_STAGE_VERTEX_BIT,
-        .module= fixed_rectangle,
+        .module = fixed_rectangle,
         .pName = "main",
         .pSpecializationInfo = null,
-        };
+    };
 
     const white_pixel = try createShaderModuleFromEmbeddedFile("Shaders/white.frag.spr", renderer.core_device_data.logical_device);
     defer destroyShaderModule(renderer.core_device_data.logical_device, white_pixel, null);
@@ -288,10 +303,10 @@ test "render one rectangle" {
         .pNext = null,
         .flags = 0,
         .stage = .VK_SHADER_STAGE_FRAGMENT_BIT,
-        .module=white_pixel,
+        .module = white_pixel,
         .pName = "main",
         .pSpecializationInfo = null,
-        };
+    };
 
     const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
     defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
@@ -306,6 +321,158 @@ test "render one rectangle" {
             renderer.frame_buffers[renderer.current_render_image_index],
             renderer.command_buffers[renderer.current_render_image_index],
             pipeline_and_layout.graphics_pipeline,
+            pipeline_and_layout.layout,
+            &[_]Vk.DescriptorSet{},
+            [4]f32{ 0, 0.5, 1, 1 },
+        );
+        try renderer.draw();
+        try renderer.present();
+    }
+}
+
+fn createDescriptorSetLayout(device: Vk.Device) !Vk.DescriptorSetLayout {
+    const bindings = [_]Vk.c.VkDescriptorSetLayoutBinding{
+        .{
+            .binding = 2,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLER,
+            .descriptorCount = 1,
+            .stageFlags = Vk.c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = null,
+        }, .{
+            .binding = 3,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .descriptorCount = 1,
+            .stageFlags = Vk.c.VK_SHADER_STAGE_FRAGMENT_BIT,
+            .pImmutableSamplers = null,
+        },
+    };
+
+    const create_info = Vk.c.VkDescriptorSetLayoutCreateInfo{
+        .sType = .VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .bindingCount = @intCast(u32, bindings.len),
+        .pBindings = &bindings[0],
+    };
+
+    var descriptor_set_layout: Vk.DescriptorSetLayout = undefined;
+    try checkVulkanResult(Vk.c.vkCreateDescriptorSetLayout(device, &create_info, null, @ptrCast(*Vk.c.VkDescriptorSetLayout, &descriptor_set_layout)));
+    return descriptor_set_layout;
+}
+
+fn createSampler(device: Vk.Device) !Vk.Sampler {
+    const create_info = Vk.c.VkSamplerCreateInfo{
+        .sType = .VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .magFilter = .VK_FILTER_NEAREST, //VK_FILTER_LINEAR;
+        .minFilter = .VK_FILTER_NEAREST, //VK_FILTER_LINEAR;
+        .mipmapMode = .VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias = 0,
+        // .anisotropyEnable = VK_TRUE;
+        .anisotropyEnable = Vk.c.VK_FALSE,
+        .maxAnisotropy = 16,
+        .compareEnable = Vk.c.VK_FALSE,
+        .compareOp = .VK_COMPARE_OP_ALWAYS,
+        .minLod = 0,
+        .maxLod = 32,
+        .borderColor = .VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+        .unnormalizedCoordinates = Vk.c.VK_FALSE,
+    };
+    var sampler: Vk.Sampler = undefined;
+    try checkVulkanResult(Vk.c.vkCreateSampler(device, &create_info, null, @ptrCast(*Vk.c.VkSampler, &sampler)));
+    return sampler;
+}
+
+fn allocateDescriptorSet(layouts: []const Vk.DescriptorSetLayout, pool: Vk.DescriptorPool, logical_device: Vk.Device, sets: []Vk.DescriptorSet) !void {
+    std.debug.assert(layouts.len == sets.len);
+    const allocInfo = Vk.c.VkDescriptorSetAllocateInfo{
+        .sType = .VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+        .pNext = null,
+        .descriptorPool = pool,
+        .descriptorSetCount = @intCast(u32, layouts.len),
+        .pSetLayouts = layouts.ptr,
+    };
+
+    try checkVulkanResult(Vk.c.vkAllocateDescriptorSets(logical_device, &allocInfo, @ptrCast(*Vk.c.VkDescriptorSet, sets.ptr)));
+}
+
+test "render one textured rectangle" {
+    try glfw.init();
+    defer glfw.deinit();
+    const window = try Window.init(200, 200, "test_window");
+    defer window.deinit();
+    var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
+    defer renderer.deinit();
+    try setDebugCallBack(renderer.instance);
+    defer cleanUpDebugCallBack(renderer.instance);
+
+    const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(renderer.core_device_data.logical_device)};
+    var descriptor_sets: [descriptor_set_layouts.len]Vk.DescriptorSet = undefined;
+    try allocateDescriptorSet(&descriptor_set_layouts, renderer.descriptor_pool, renderer.core_device_data.logical_device, &descriptor_sets);
+
+    var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
+
+    const fixed_rectangle = try createShaderModuleFromEmbeddedFile("Shaders/fixed_uv_rectangle.vert.spr", renderer.core_device_data.logical_device);
+    defer destroyShaderModule(renderer.core_device_data.logical_device, fixed_rectangle, null);
+
+    shader_stages[0] = .{
+        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .stage = .VK_SHADER_STAGE_VERTEX_BIT,
+        .module = fixed_rectangle,
+        .pName = "main",
+        .pSpecializationInfo = null,
+    };
+
+    const textured_pixel = try createShaderModuleFromEmbeddedFile("Shaders/textured.frag.spr", renderer.core_device_data.logical_device);
+    defer destroyShaderModule(renderer.core_device_data.logical_device, textured_pixel, null);
+
+    shader_stages[1] = .{
+        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .stage = .VK_SHADER_STAGE_FRAGMENT_BIT,
+        .module = textured_pixel,
+        .pName = "main",
+        .pSpecializationInfo = null,
+    };
+
+    const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
+    defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
+
+    var store = try DeviceMemoryStore.init(.{
+        .default_allocation_size = 1e3,
+        .default_staging_buffer_size = 1,
+        .maximum_uniform_buffer_size = null,
+        .buffering_mode = .Triple,
+    }, renderer.core_device_data, testing.allocator);
+    defer store.deinit();
+
+    const sampler = createSampler(renderer.core_device_data.logical_device);
+
+    const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
+    const data = [_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32);
+    try store.uploadImage2D([4]u8, image_id, 32, 32, &data, renderer.core_device_data.queues);
+
+    // write descriptor sets
+
+    try window.show();
+    var i: u32 = 0;
+    while (i < 100) : (i += 1) {
+        try renderer.updateImageIndex();
+        try fillCommandBuffer(
+            renderer.render_pass,
+            renderer.core_device_data.swap_chain.extent,
+            renderer.frame_buffers[renderer.current_render_image_index],
+            renderer.command_buffers[renderer.current_render_image_index],
+            pipeline_and_layout.graphics_pipeline,
+            pipeline_and_layout.layout,
+            &descriptor_sets,
             [4]f32{ 0, 0.5, 1, 1 },
         );
         try renderer.draw();

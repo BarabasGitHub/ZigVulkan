@@ -64,11 +64,8 @@ pub fn createInstance(application_info: ApplicationInfo, extensions: []const [*:
 
 pub const destroyInstance = Vk.c.vkDestroyInstance;
 
-pub fn destroyTestInstance(instance: Vk.c.VkInstance) void {
-    destroyDebugCallback(instance, global_debug_callback_for_testing.?);
-    testing.expectEqual(@as(usize, 0), global_counter_for_warning_messages);
-    global_counter_for_warning_messages = 0;
-    global_debug_callback_for_testing = null;
+pub fn destroyTestInstance(instance: Vk.Instance) void {
+    cleanUpDebugCallBack(instance);
     destroyInstance(instance, null);
 }
 
@@ -111,8 +108,19 @@ pub fn createTestInstance(extensions: []const [*:0]const u8) !Vk.Instance {
     try extension_list.append(Vk.c.VK_EXT_DEBUG_REPORT_EXTENSION_NAME);
     try extension_list.appendSlice(extensions);
     var instance = try createInstance(testApplicationInfo(), extension_list.span());
-    global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, &global_counter_for_warning_messages);
+    try setDebugCallBack(instance);
     return instance;
+}
+
+pub fn setDebugCallBack(instance: Vk.Instance) !void {
+    global_debug_callback_for_testing = try createDebugCallback(instance, debugCallbackPrintingWarnings, &global_counter_for_warning_messages);
+}
+
+pub fn cleanUpDebugCallBack(instance: Vk.Instance) void {
+    destroyDebugCallback(instance, global_debug_callback_for_testing.?);
+    testing.expectEqual(@as(usize, 0), global_counter_for_warning_messages);
+    global_counter_for_warning_messages = 0;
+    global_debug_callback_for_testing = null;
 }
 
 test "Creating a Vulkan instance without extensions should succeed" {
