@@ -14,12 +14,9 @@ float4 CreateRectangleVertex(uint vertex_index)
 float2 CreateRectangleUV(uint vertex_index)
 {
     float2 uv;
-    // // (0, 0), (1, 0), (0, 1), (1, 1), (0, 1), (1, 0)
-    // uv.x = (vertex_index & 1);
-    // uv.y = (vertex_index & 4) ? (1 - uv.x) : ((vertex_index & 2) / 2);
-    // (0, 1), (1, 1), (0, 0), (1, 0), (0, 0), (1, 1)
-    uv.x = (vertex_index & 1) ? 1 : 0;
-    uv.y = (((vertex_index + 1) % 6) < 3) ? 1 : 0;
+    // (0, 0), (1, 0), (0, 1), (1, 1), (0, 1), (1, 0)
+    uv.x = (vertex_index & 1);
+    uv.y = (vertex_index & 4) ? (1 - uv.x) : ((vertex_index & 2) / 2);
     return uv;
 }
 

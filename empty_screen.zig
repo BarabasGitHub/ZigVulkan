@@ -45,8 +45,6 @@ test "render an empty screen" {
     defer window.deinit();
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
-    try setDebugCallBack(renderer.instance);
-    defer cleanUpDebugCallBack(renderer.instance);
 
     try window.show();
     var i: u32 = 0;
@@ -98,7 +96,9 @@ fn fillCommandBuffer(
 
     Vk.c.vkCmdBindPipeline(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
 
-    Vk.c.vkCmdBindDescriptorSets(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0, @intCast(u32, descriptor_sets.len), descriptor_sets.ptr, 0, null);
+    if (descriptor_sets.len > 0) {
+        Vk.c.vkCmdBindDescriptorSets(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0, @intCast(u32, descriptor_sets.len), descriptor_sets.ptr, 0, null);
+    }
 
     Vk.c.vkCmdDraw(command_buffer, 6, 1, 0, 0);
 
@@ -276,8 +276,6 @@ test "render one plain rectangle" {
     defer window.deinit();
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
-    try setDebugCallBack(renderer.instance);
-    defer cleanUpDebugCallBack(renderer.instance);
 
     const descriptor_set_layouts = [_]Vk.c.VkDescriptorSetLayout{};
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
@@ -407,10 +405,12 @@ test "render one textured rectangle" {
     defer window.deinit();
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
-    try setDebugCallBack(renderer.instance);
-    defer cleanUpDebugCallBack(renderer.instance);
 
     const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(renderer.core_device_data.logical_device)};
+    defer {
+        for (descriptor_set_layouts) |l|
+            Vk.c.vkDestroyDescriptorSetLayout(renderer.core_device_data.logical_device, l, null);
+    }
     var descriptor_sets: [descriptor_set_layouts.len]Vk.DescriptorSet = undefined;
     try allocateDescriptorSet(&descriptor_set_layouts, renderer.descriptor_pool, renderer.core_device_data.logical_device, &descriptor_sets);
 
@@ -453,17 +453,22 @@ test "render one textured rectangle" {
     }, renderer.core_device_data, testing.allocator);
     defer store.deinit();
 
-    const sampler = createSampler(renderer.core_device_data.logical_device);
+    const sampler = try createSampler(renderer.core_device_data.logical_device);
+    defer Vk.c.vkDestroySampler(renderer.core_device_data.logical_device, sampler, null);
 
     const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
-    const data = [_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32);
+    const data = [_][4]u8{.{ 0xFF, 0xFF, 0xFF, 0xFF }} ++ [_][4]u8{.{ 0xFF, 0x00, 0xFF, 0xFF }} ** 31 ++ [_][4]u8{.{ 0xFF, 0xFF, 0x00, 0xFF }} ** (31 * 32);
     try store.uploadImage2D([4]u8, image_id, 32, 32, &data, renderer.core_device_data.queues);
+    const image_info = store.getImageInformation(image_id);
+    const image_view = try createImageView2D(renderer.core_device_data.logical_device, image_info.image, image_info.format);
+    defer Vk.c.vkDestroyImageView(renderer.core_device_data.logical_device, image_view, null);
 
     // write descriptor sets
+    writeDescriptorSet(renderer.core_device_data.logical_device, sampler, image_view, image_info.layout, descriptor_sets[0]);
 
     try window.show();
     var i: u32 = 0;
-    while (i < 100) : (i += 1) {
+    while (i < 10) : (i += 1) {
         try renderer.updateImageIndex();
         try fillCommandBuffer(
             renderer.render_pass,
@@ -479,3 +484,88 @@ test "render one textured rectangle" {
         try renderer.present();
     }
 }
+
+fn createImageView2D(device: Vk.Device, image: Vk.Image, format: Vk.c.VkFormat) !Vk.ImageView {
+    const view_create_info = Vk.c.VkImageViewCreateInfo{
+        .sType = .VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .image = image,
+        .viewType = .VK_IMAGE_VIEW_TYPE_2D,
+        .format = format,
+        .components = .{ .r = .VK_COMPONENT_SWIZZLE_IDENTITY, .g = .VK_COMPONENT_SWIZZLE_IDENTITY, .b = .VK_COMPONENT_SWIZZLE_IDENTITY, .a = .VK_COMPONENT_SWIZZLE_IDENTITY },
+        .subresourceRange = .{ .aspectMask = Vk.c.VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel = 0, .levelCount = Vk.c.VK_REMAINING_MIP_LEVELS, .baseArrayLayer = 0, .layerCount = Vk.c.VK_REMAINING_ARRAY_LAYERS },
+    };
+
+    var view: Vk.ImageView = undefined;
+    try checkVulkanResult(Vk.c.vkCreateImageView(device, &view_create_info, null, @ptrCast(*Vk.c.VkImageView, &view)));
+    return view;
+}
+
+fn writeDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, view: Vk.ImageView, layout: Vk.c.VkImageLayout, descriptor_set: Vk.DescriptorSet) void {
+    const image_info = Vk.c.VkDescriptorImageInfo{
+        .sampler = sampler,
+        .imageView = view,
+        .imageLayout = layout,
+    };
+
+    const write_descriptor_sets = [_]Vk.c.VkWriteDescriptorSet{
+        .{
+            .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = null,
+            .dstSet = descriptor_set,
+            .dstBinding = 2,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLER,
+            .pImageInfo = &image_info,
+            .pBufferInfo = null,
+            .pTexelBufferView = null,
+        }, .{
+            .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = null,
+            .dstSet = descriptor_set,
+            .dstBinding = 3,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .pImageInfo = &image_info,
+            .pBufferInfo = null,
+            .pTexelBufferView = null,
+        },
+    };
+
+    Vk.c.vkUpdateDescriptorSets(device, @intCast(u32, write_descriptor_sets.len), &write_descriptor_sets[0], 0, null);
+}
+
+// VkWriteDescriptorSet CreateWriteDesciptorSetForSampler(VkDescriptorImageInfo const * sampler_info, uint32_t binding, VkDescriptorSet descriptor_set)
+// {
+//     VkWriteDescriptorSet write_descriptor_set;
+//     write_descriptor_set.pNext = nullptr;
+//     write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+//     write_descriptor_set.dstSet = descriptor_set;
+//     write_descriptor_set.dstBinding = binding;
+//     write_descriptor_set.dstArrayElement = 0;
+//     write_descriptor_set.descriptorCount = 1;
+//     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
+//     write_descriptor_set.pImageInfo = sampler_info;
+//     write_descriptor_set.pBufferInfo = nullptr;
+//     write_descriptor_set.pTexelBufferView = nullptr;
+//     return write_descriptor_set;
+// }
+
+// VkWriteDescriptorSet CreateWriteDesciptorSetForTexture(VkDescriptorImageInfo const * texture_info, uint32_t binding, VkDescriptorSet descriptor_set)
+// {
+//     VkWriteDescriptorSet write_descriptor_set;
+//     write_descriptor_set.pNext = nullptr;
+//     write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+//     write_descriptor_set.dstSet = descriptor_set;
+//     write_descriptor_set.dstBinding = binding;
+//     write_descriptor_set.dstArrayElement = 0;
+//     write_descriptor_set.descriptorCount = 1;
+//     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
+//     write_descriptor_set.pImageInfo = texture_info;
+//     write_descriptor_set.pBufferInfo = nullptr;
+//     write_descriptor_set.pTexelBufferView = nullptr;
+//     return write_descriptor_set;
+// }

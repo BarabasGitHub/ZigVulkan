@@ -668,7 +668,7 @@ pub const Renderer = struct {
         defer allocator.free(extensions);
         std.mem.copy([*:0]const u8, extensions, glfw_extensions);
         std.mem.copy([*:0]const u8, extensions[glfw_extensions.len..], input_extensions);
-        const instance = try createInstance(application_info, extensions);
+        const instance = try if (USE_DEBUG_TOOLS) createTestInstance(extensions) else createInstance(application_info, extensions);
         errdefer destroyInstance(instance, null);
         const core_device_data = try CoreGraphicsDeviceData.init(instance, window, allocator);
         errdefer core_device_data.deinit(instance);
@@ -711,7 +711,11 @@ pub const Renderer = struct {
         destroyCommandPool(self.core_device_data.logical_device, self.graphics_command_pool, null);
         self.semaphores.deinit(self.core_device_data.logical_device);
         self.core_device_data.deinit(self.instance);
-        destroyInstance(self.instance, null);
+        if (USE_DEBUG_TOOLS) {
+            destroyTestInstance(self.instance);
+        } else {
+            destroyInstance(self.instance, null);
+        }
     }
 
     pub fn draw(self: Self) !void {

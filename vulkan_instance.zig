@@ -34,7 +34,7 @@ fn VulkanVersionFromVersion(version: ApplicationInfo.Version) u32 {
     return Vk.c.VK_MAKE_VERSION(@as(u32, version.major), @as(u22, version.minor), version.patch);
 }
 
-pub const validation_layers: []const [*:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][*:0]const u8{"VK_LAYER_LUNARG_standard_validation"} else {};
+pub const validation_layers: []const [*:0]const u8 = if (comptime USE_DEBUG_TOOLS) &[_][*:0]const u8{"VK_LAYER_KHRONOS_validation"} else {};
 
 pub fn createInstance(application_info: ApplicationInfo, extensions: []const [*:0]const u8) !Vk.Instance {
     const app_info = Vk.c.VkApplicationInfo{
@@ -173,7 +173,7 @@ fn debugCallback(
     layer_prefix: [*c]const u8,
     message: [*c]const u8,
     user_data: ?*c_void,
-) callconv(.C) Vk.c.VkBool32 {
+) callconv(.Stdcall) Vk.c.VkBool32 {
     @ptrCast(*u32, @alignCast(@alignOf(u32), user_data)).* += 1;
     return @boolToInt(false);
 }
@@ -183,11 +183,10 @@ test "Creating a debug callback should succeed" {
     defer destroyInstance(instance, null);
     // setup callback with user data
     var user_data: u32 = 0;
-    const callback = try createDebugCallback(instance, debugCallbackPrintingWarnings, &user_data);
+    const callback = try createDebugCallback(instance, debugCallback, &user_data);
     defer destroyDebugCallback(instance, callback);
-    // make it generate an error/warning and call the callback somehow
-    // // make it generate an error/warning and call the callback by creating a null callback
-    // // destroyDebugCallback(instance, try createDebugCallbackWichCanFail(instance, null, null));
+    // make it generate an error/warning and call the callback by creating a null callback
+    destroyDebugCallback(instance, try createDebugCallbackWichCanFail(instance, null, null));
     // check our callback was called
-    // testing.expectEqual(@as(u32, 1), user_data);
+    testing.expectEqual(@as(u32, 1), user_data);
 }

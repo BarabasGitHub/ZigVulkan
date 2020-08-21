@@ -10,7 +10,7 @@ const GLFWDependencies = [_][]const u8{
     "gdi32",
     "shell32",
 };
-const vulkan_library = "E:/Libraries/VulkanSDK/1.2.131.2/Lib/vulkan-1.lib";
+const vulkan_library = "E:/Libraries/VulkanSDK/1.2.148.1/Lib/vulkan-1.lib";
 const glfw_library = "E:/Libraries/glfw/build/src/Release/glfw3.lib";
 
 fn linkVulkanGLFWAndDependencies(step: *build_lib.LibExeObjStep) void {

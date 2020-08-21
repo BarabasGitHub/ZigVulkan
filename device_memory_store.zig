@@ -185,6 +185,7 @@ pub const DeviceMemoryStore = struct {
     const ImageIdInformation = struct {
         image: Vk.Image,
         layout: Vk.c.VkImageLayout,
+        format: Vk.c.VkFormat,
         // this should go somewhere else if not every image has a seprate memory allocation
         device_memory: Vk.DeviceMemory,
     };
@@ -358,6 +359,7 @@ pub const DeviceMemoryStore = struct {
         try ArrayListExtension(ImageIdInformation).assignAtPositionAndResizeIfNecessary(&self.image_id_infos, id.index, .{
             .image = image,
             .layout = Vk.c.VkImageLayout.VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+            .format = format,
             .device_memory = device_memory,
         });
         return id;
@@ -398,6 +400,11 @@ pub const DeviceMemoryStore = struct {
 
     pub fn isValidImageId(self: Self, id: ImageID) bool {
         return self.image_id_generator.isValid(id);
+    }
+
+    pub fn getImageInformation(self: Self, id: ImageID) ImageIdInformation {
+        std.debug.assert(self.isValidImageId(id));
+        return self.image_id_infos.items[id.index];
     }
 
     pub fn resetStagingBuffer(self: *Self, size: usize) !void {
