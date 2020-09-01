@@ -91,7 +91,7 @@ fn debugCallbackPrintingWarnings(
     layer_prefix: [*c]const u8,
     message: [*c]const u8,
     user_data: ?*c_void,
-) callconv(.Stdcall) Vk.c.VkBool32 {
+) callconv(.C) Vk.c.VkBool32 {
     if (std.cstr.cmp(layer_prefix, "Loader Message") != 0) {
         std.debug.warn("Validation layer({s}): {s}\n", .{ layer_prefix, message });
         @ptrCast(*usize, @alignCast(@alignOf(usize), user_data)).* += 1;
@@ -173,7 +173,7 @@ fn debugCallback(
     layer_prefix: [*c]const u8,
     message: [*c]const u8,
     user_data: ?*c_void,
-) callconv(.Stdcall) Vk.c.VkBool32 {
+) callconv(.C) Vk.c.VkBool32 {
     @ptrCast(*u32, @alignCast(@alignOf(u32), user_data)).* += 1;
     return @boolToInt(false);
 }
