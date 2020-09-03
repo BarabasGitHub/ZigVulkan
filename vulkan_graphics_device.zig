@@ -484,7 +484,7 @@ fn createGraphicsCommandPool(logical_device: Vk.Device, graphics_family_index: u
 const destroyCommandPool = Vk.c.vkDestroyCommandPool;
 
 fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
-    const pool_sizes = [3]Vk.c.VkDescriptorPoolSize{
+    const pool_sizes = [_]Vk.c.VkDescriptorPoolSize{
         .{
             .type = .VK_DESCRIPTOR_TYPE_SAMPLER,
             .descriptorCount = 64,
@@ -495,6 +495,10 @@ fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
         },
         .{
             .type = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
+            .descriptorCount = 64,
+        },
+        .{
+            .type = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
             .descriptorCount = 64,
         },
     };

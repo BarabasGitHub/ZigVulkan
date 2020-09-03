@@ -309,7 +309,7 @@ pub const DeviceMemoryStore = struct {
     pub fn getMappedBufferSlices(self: Self, allocator: *mem.Allocator) ![][]u8 {
         const slices = try allocator.alloc([]u8, self.buffer_allocations.items.len);
         errdefer allocator.free(slices);
-        for (self.buffer_allocations.span()) |allocation, i| {
+        for (self.buffer_allocations.items) |allocation, i| {
             slices[i] = (allocation.mapped + allocation.size * self.buffering_index)[0..allocation.used];
         }
         return slices;
@@ -318,7 +318,7 @@ pub const DeviceMemoryStore = struct {
     pub fn flushAndSwitchBuffers(self: *Self) !void {
         var mapped_ranges = try std.ArrayList(Vk.c.VkMappedMemoryRange).initCapacity(self.allocator, self.buffer_allocations.items.len);
         defer mapped_ranges.deinit();
-        for (self.buffer_allocations.span()) |allocation| {
+        for (self.buffer_allocations.items) |allocation| {
             mapped_ranges.appendAssumeCapacity(.{
                 .sType = .VK_STRUCTURE_TYPE_MAPPED_MEMORY_RANGE,
                 .pNext = null,
@@ -327,21 +327,25 @@ pub const DeviceMemoryStore = struct {
                 .size = alignInteger(allocation.used, self.configuration.non_coherent_atom_size),
             });
         }
-        try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, @intCast(u32, mapped_ranges.items.len), mapped_ranges.span().ptr));
+        try checkVulkanResult(Vk.c.vkFlushMappedMemoryRanges(self.logical_device, @intCast(u32, mapped_ranges.items.len), mapped_ranges.items.ptr));
         self.buffering_index = (self.buffering_index + 1) % self.configuration.buffering_mode.getBufferCount();
     }
 
-    fn getVkDescriptorBufferInfoFromAllocationAndBufferingMode(allocation: BufferAllocation, buffering_mode: BufferingMode) Vk.c.VkDescriptorBufferInfo {
-        return .{
-            .buffer = allocation.buffer,
-            .offset = 0,
-            .range = allocation.size * buffering_mode.getBufferCount(),
-        };
-    }
+    fn getVkDescriptorBufferInfoFromAllocationAndBufferingMode(allocation: BufferAllocation, buffering_mode: BufferingMode) Vk.c.VkDescriptorBufferInfo {}
 
     pub fn getVkBufferForBufferId(self: Self, id: BufferID) Vk.Buffer {
         debug.assert(self.isValidBufferId(id));
         return self.buffer_allocations.items[self.buffer_id_infos.items[id.index].allocation_index].buffer;
+    }
+
+    pub fn getVkDescriptorBufferInfoForBufferId(self: Self, id: BufferID) Vk.c.VkDescriptorBufferInfo {
+        debug.assert(self.isValidBufferId(id));
+        const info = &self.buffer_id_infos.items[id.index];
+        return .{
+            .buffer = self.buffer_allocations.items[info.allocation_index].buffer,
+            .offset = 0,
+            .range = info.size,
+        };
     }
 
     // images

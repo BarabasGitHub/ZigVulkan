@@ -6,7 +6,7 @@ pub usingnamespace @import("vulkan_graphics_device.zig");
 pub usingnamespace @import("vulkan_instance.zig");
 pub usingnamespace @import("vulkan_shader.zig");
 pub usingnamespace @import("window.zig");
-pub usingnamespace @import("empty_screen.zig");
+pub usingnamespace @import("simple_render_tests.zig");
 
 comptime {
     @import("std").meta.refAllDecls(@This());
