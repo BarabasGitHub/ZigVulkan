@@ -50,3 +50,40 @@ test "creating a shader module from an empty main hlsl shader should succeed on 
     const shader_module = try createShaderModule(empty_shader, renderer.core_device_data.logical_device);
     destroyShaderModule(renderer.core_device_data.logical_device, shader_module, null);
 }
+
+pub const ShaderStage = enum {
+    Fragment,
+    Vertex,
+
+    pub fn toShaderStageFlagBits(self: ShaderStage) Vk.c.VkShaderStageFlagBits {
+        return switch (self) {
+            .Fragment => .VK_SHADER_STAGE_FRAGMENT_BIT,
+            .Vertex => .VK_SHADER_STAGE_VERTEX_BIT,
+        };
+    }
+};
+
+pub const Shader = struct {
+    module: Vk.ShaderModule,
+    stage: ShaderStage,
+
+    pub fn init(logical_device: Vk.Device, shader_data: []const u32, stage: ShaderStage) !Shader {
+        return Shader{ .module = try createShaderModule(shader_data, logical_device), .stage = stage };
+    }
+
+    pub fn deinit(self: Shader, logical_device: Vk.Device) void {
+        destroyShaderModule(logical_device, self.module, null);
+    }
+
+    pub fn toPipelineShaderStageCreateInfo(self: Shader) Vk.c.VkPipelineShaderStageCreateInfo {
+        return .{
+            .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
+            .pNext = null,
+            .flags = 0,
+            .stage = self.stage.toShaderStageFlagBits(),
+            .module = self.module,
+            .pName = "main",
+            .pSpecializationInfo = null,
+        };
+    }
+};

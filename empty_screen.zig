@@ -265,8 +265,8 @@ fn destroyPipelineAndLayout(logical_device: Vk.Device, pipeline_and_layout: Pipe
     Vk.c.vkDestroyPipeline(logical_device, pipeline_and_layout.graphics_pipeline, null);
 }
 
-fn createShaderModuleFromEmbeddedFile(comptime file: []const u8, logical_device: Vk.Device) !Vk.ShaderModule {
-    return createShaderModule(std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), logical_device);
+fn createShaderModuleFromEmbeddedFile(logical_device: Vk.Device, comptime file: []const u8, stage: ShaderStage) !Shader {
+    return Shader.init(logical_device, std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), stage);
 }
 
 test "render one plain rectangle" {
@@ -280,31 +280,13 @@ test "render one plain rectangle" {
     const descriptor_set_layouts = [_]Vk.c.VkDescriptorSetLayout{};
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile("Shaders/fixed_rectangle.vert.spr", renderer.core_device_data.logical_device);
-    defer destroyShaderModule(renderer.core_device_data.logical_device, fixed_rectangle, null);
+    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/fixed_rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(renderer.core_device_data.logical_device);
+    shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    shader_stages[0] = .{
-        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .stage = .VK_SHADER_STAGE_VERTEX_BIT,
-        .module = fixed_rectangle,
-        .pName = "main",
-        .pSpecializationInfo = null,
-    };
-
-    const white_pixel = try createShaderModuleFromEmbeddedFile("Shaders/white.frag.spr", renderer.core_device_data.logical_device);
-    defer destroyShaderModule(renderer.core_device_data.logical_device, white_pixel, null);
-
-    shader_stages[1] = .{
-        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .stage = .VK_SHADER_STAGE_FRAGMENT_BIT,
-        .module = white_pixel,
-        .pName = "main",
-        .pSpecializationInfo = null,
-    };
+    const white_pixel = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/white.frag.spr", .Fragment);
+    defer white_pixel.deinit(renderer.core_device_data.logical_device);
+    shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
 
     const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
     defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
@@ -416,31 +398,13 @@ test "render one textured rectangle" {
 
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile("Shaders/fixed_uv_rectangle.vert.spr", renderer.core_device_data.logical_device);
-    defer destroyShaderModule(renderer.core_device_data.logical_device, fixed_rectangle, null);
+    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/fixed_uv_rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(renderer.core_device_data.logical_device);
+    shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    shader_stages[0] = .{
-        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .stage = .VK_SHADER_STAGE_VERTEX_BIT,
-        .module = fixed_rectangle,
-        .pName = "main",
-        .pSpecializationInfo = null,
-    };
-
-    const textured_pixel = try createShaderModuleFromEmbeddedFile("Shaders/textured.frag.spr", renderer.core_device_data.logical_device);
-    defer destroyShaderModule(renderer.core_device_data.logical_device, textured_pixel, null);
-
-    shader_stages[1] = .{
-        .sType = .VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .stage = .VK_SHADER_STAGE_FRAGMENT_BIT,
-        .module = textured_pixel,
-        .pName = "main",
-        .pSpecializationInfo = null,
-    };
+    const textured_pixel = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/textured.frag.spr", .Fragment);
+    defer textured_pixel.deinit(renderer.core_device_data.logical_device);
+    shader_stages[1] = textured_pixel.toPipelineShaderStageCreateInfo();
 
     const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
     defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
@@ -537,35 +501,3 @@ fn writeDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, view: Vk.ImageView
 
     Vk.c.vkUpdateDescriptorSets(device, @intCast(u32, write_descriptor_sets.len), &write_descriptor_sets[0], 0, null);
 }
-
-// VkWriteDescriptorSet CreateWriteDesciptorSetForSampler(VkDescriptorImageInfo const * sampler_info, uint32_t binding, VkDescriptorSet descriptor_set)
-// {
-//     VkWriteDescriptorSet write_descriptor_set;
-//     write_descriptor_set.pNext = nullptr;
-//     write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-//     write_descriptor_set.dstSet = descriptor_set;
-//     write_descriptor_set.dstBinding = binding;
-//     write_descriptor_set.dstArrayElement = 0;
-//     write_descriptor_set.descriptorCount = 1;
-//     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLER;
-//     write_descriptor_set.pImageInfo = sampler_info;
-//     write_descriptor_set.pBufferInfo = nullptr;
-//     write_descriptor_set.pTexelBufferView = nullptr;
-//     return write_descriptor_set;
-// }
-
-// VkWriteDescriptorSet CreateWriteDesciptorSetForTexture(VkDescriptorImageInfo const * texture_info, uint32_t binding, VkDescriptorSet descriptor_set)
-// {
-//     VkWriteDescriptorSet write_descriptor_set;
-//     write_descriptor_set.pNext = nullptr;
-//     write_descriptor_set.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-//     write_descriptor_set.dstSet = descriptor_set;
-//     write_descriptor_set.dstBinding = binding;
-//     write_descriptor_set.dstArrayElement = 0;
-//     write_descriptor_set.descriptorCount = 1;
-//     write_descriptor_set.descriptorType = VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE;
-//     write_descriptor_set.pImageInfo = texture_info;
-//     write_descriptor_set.pBufferInfo = nullptr;
-//     write_descriptor_set.pTexelBufferView = nullptr;
-//     return write_descriptor_set;
-// }
