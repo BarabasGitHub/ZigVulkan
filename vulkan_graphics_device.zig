@@ -762,22 +762,18 @@ pub const Renderer = struct {
     }
 
     pub fn updateImageIndex(self: *Self) !void {
-        while (true) {
-            if (checkVulkanResult(Vk.c.vkAcquireNextImageKHR(
-                self.core_device_data.logical_device,
-                self.core_device_data.swap_chain.swap_chain,
-                std.math.maxInt(u64),
-                self.semaphores.image_available,
-                null,
-                &self.current_render_image_index,
-            ))) {
-                return;
-            } else |err| switch (err) {
-                error.VkErrorOutOfDateKhr => return err, // recreate swapchain and try again (continue)
-                error.VkSuboptimalKhr => break,
-                else => return err,
-            }
-        }
+        return checkVulkanResult(Vk.c.vkAcquireNextImageKHR(
+            self.core_device_data.logical_device,
+            self.core_device_data.swap_chain.swap_chain,
+            std.math.maxInt(u64),
+            self.semaphores.image_available,
+            null,
+            &self.current_render_image_index,
+        )) catch |err| switch (err) {
+            error.VkErrorOutOfDateKhr => err, // recreate swapchain and try again (continue)
+            error.VkSuboptimalKhr => {},
+            else => err,
+        };
     }
 };
 
