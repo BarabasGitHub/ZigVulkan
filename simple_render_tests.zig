@@ -312,7 +312,7 @@ const RectangleBuffer = packed struct {
     center_x: f32,
     center_y: f32,
     center_z: f32,
-    _padding: u32 = 0,
+    _padding: u32 = undefined,
     colour_r: f32,
     colour_g: f32,
     colour_b: f32,
