@@ -122,13 +122,63 @@ test "finding a physical device suitable for graphics and presenting should succ
     _ = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, surface, testing.allocator);
 }
 
+pub const Queue = struct {
+    handle: Vk.Queue,
+    family_index: u16,
+    queue_index: u16,
+
+    pub fn createCommandPool(self: Queue, logical_device: Vk.Device, flags: u32) !Vk.CommandPool {
+        const poolInfo = Vk.c.VkCommandPoolCreateInfo{
+            .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+            .pNext = null,
+            .queueFamilyIndex = self.family_index,
+            .flags = flags,
+        };
+        var command_pool: Vk.CommandPool = undefined;
+        try checkVulkanResult(Vk.c.vkCreateCommandPool(@ptrCast(Vk.c.VkDevice, logical_device), &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
+        return command_pool;
+    }
+
+    pub fn submitSingle(self: Queue, wait_semaphores: []const Vk.Semaphore, command_buffers: []const Vk.CommandBuffer, signal_semaphores: []const Vk.Semaphore, stage_mask: ?u32) !void {
+        const stage_mask_ptr = if (stage_mask != null) &stage_mask.? else null;
+        const submit_info = Vk.c.VkSubmitInfo{
+            .sType = .VK_STRUCTURE_TYPE_SUBMIT_INFO,
+            .pNext = null,
+            .waitSemaphoreCount = @intCast(u32, wait_semaphores.len),
+            .pWaitSemaphores = wait_semaphores.ptr,
+            .pWaitDstStageMask = stage_mask_ptr,
+            .commandBufferCount = @intCast(u32, command_buffers.len),
+            .pCommandBuffers = command_buffers.ptr,
+            .signalSemaphoreCount = @intCast(u32, signal_semaphores.len),
+            .pSignalSemaphores = signal_semaphores.ptr,
+        };
+        try checkVulkanResult(Vk.c.vkQueueSubmit(self.handle, 1, &submit_info, null));
+    }
+
+    pub fn waitIdle(self: Queue) !void {
+        try checkVulkanResult(Vk.c.vkQueueWaitIdle(self.handle));
+    }
+
+    pub fn present(self: Queue, wait_semaphores: []const Vk.Semaphore, swap_chains: []const Vk.SwapchainKHR, image_indices: []const u32) !void {
+        std.debug.assert(swap_chains.len == image_indices.len);
+        const present_info = Vk.c.VkPresentInfoKHR{
+            .sType = .VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+            .pNext = null,
+            .waitSemaphoreCount = @intCast(u32, wait_semaphores.len),
+            .pWaitSemaphores = wait_semaphores.ptr,
+            .swapchainCount = @intCast(u32, swap_chains.len),
+            .pSwapchains = swap_chains.ptr,
+            .pImageIndices = image_indices.ptr,
+            .pResults = null, // Optional
+        };
+        try checkVulkanResult(Vk.c.vkQueuePresentKHR(self.handle, &present_info));
+    }
+};
+
 pub const Queues = struct {
-    graphics: Vk.Queue,
-    graphics_index: u16,
-    present: Vk.Queue,
-    present_index: u16,
-    transfer: Vk.Queue,
-    transfer_index: u16,
+    graphics: Queue,
+    present: Queue,
+    transfer: Queue,
 };
 
 fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
@@ -150,7 +200,7 @@ fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyP
     return transfer_family;
 }
 
-fn createLogicalDeviceAndQueues(physical_device: Vk.c.VkPhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *std.meta.Child(Vk.c.VkDevice), queues: *Queues) !void {
+fn createLogicalDeviceAndQueues(physical_device: Vk.PhysicalDevice, surface: Vk.c.VkSurfaceKHR, allocator: *mem.Allocator, logical_device: *Vk.Device, queues: *Queues) !void {
     const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(physical_device, allocator);
     defer allocator.free(queue_familiy_properties);
     const graphics_family = findGraphicsFamilyQueue(queue_familiy_properties).?;
@@ -203,9 +253,12 @@ fn createLogicalDeviceAndQueues(physical_device: Vk.c.VkPhysicalDevice, surface:
     Vk.c.vkGetDeviceQueue(logical_device.*, graphics_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.graphics));
     Vk.c.vkGetDeviceQueue(logical_device.*, present_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.present));
     Vk.c.vkGetDeviceQueue(logical_device.*, transfer_family, 0, @ptrCast(*Vk.c.VkQueue, &queues.transfer));
-    queues.graphics_index = graphics_family;
-    queues.present_index = present_family;
-    queues.transfer_index = transfer_family;
+    queues.graphics.family_index = graphics_family;
+    queues.present.family_index = present_family;
+    queues.transfer.family_index = transfer_family;
+    queues.graphics.queue_index = 0;
+    queues.present.queue_index = 0;
+    queues.transfer.queue_index = 0;
 }
 
 fn destroyDevice(device: Vk.c.VkDevice) void {
@@ -224,18 +277,14 @@ test "Creating logical device and queues should succeed on my pc" {
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, surface, testing.allocator);
 
     var logical_device: std.meta.Child(Vk.c.VkDevice) = undefined;
-    const invalid_index = std.math.maxInt(u16);
-    var queues: Queues = .{ .graphics = undefined, .graphics_index = invalid_index, .present = undefined, .present_index = invalid_index, .transfer = undefined, .transfer_index = invalid_index };
+    var queues: Queues = .{ .graphics = undefined, .present = undefined, .transfer = undefined };
     try createLogicalDeviceAndQueues(physical_device, surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
 
     // testing.expect(logical_device != null);
     // testing.expect(queues.graphics != null);
-    testing.expect(queues.graphics_index != invalid_index);
     // testing.expect(queues.present != null);
-    testing.expect(queues.present_index != invalid_index);
     // testing.expect(queues.transfer != null);
-    testing.expect(queues.transfer_index != invalid_index);
 }
 
 pub const SwapChainData = struct {
@@ -411,7 +460,7 @@ test "Creating a swap chain should succeed on my pc" {
     try createLogicalDeviceAndQueues(physical_device, surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
 
-    const swap_chain = try createSwapChain(surface, physical_device, logical_device, queues.graphics_index, queues.present_index, testing.allocator);
+    const swap_chain = try createSwapChain(surface, physical_device, logical_device, queues.graphics.family_index, queues.present.family_index, testing.allocator);
     defer swap_chain.deinit(logical_device);
     testing.expect(swap_chain.images.len != 0);
     testing.expect(swap_chain.views.len != 0);
@@ -438,7 +487,7 @@ pub const CoreGraphicsDeviceData = struct {
         self.physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, self.surface, allocator);
         try createLogicalDeviceAndQueues(self.physical_device, self.surface, allocator, &self.logical_device, &self.queues);
         errdefer destroyDevice(self.logical_device);
-        self.swap_chain = try SwapChainData.init(self.surface, self.physical_device, self.logical_device, self.queues.graphics_index, self.queues.present_index, allocator);
+        self.swap_chain = try SwapChainData.init(self.surface, self.physical_device, self.logical_device, self.queues.graphics.family_index, self.queues.present.family_index, allocator);
         return self;
     }
 
@@ -676,7 +725,7 @@ pub const Renderer = struct {
         errdefer destroyInstance(instance, null);
         const core_device_data = try CoreGraphicsDeviceData.init(instance, window, allocator);
         errdefer core_device_data.deinit(instance);
-        const graphics_command_pool = try createGraphicsCommandPool(core_device_data.logical_device, core_device_data.queues.graphics_index);
+        const graphics_command_pool = try createGraphicsCommandPool(core_device_data.logical_device, core_device_data.queues.graphics.family_index);
         errdefer destroyCommandPool(core_device_data.logical_device, graphics_command_pool, null);
         const descriptor_pool = try createDescriptorPool(core_device_data.logical_device);
         errdefer destroyDescriptorPool(core_device_data.logical_device, descriptor_pool, null);
@@ -723,42 +772,24 @@ pub const Renderer = struct {
     }
 
     pub fn draw(self: Self) !void {
-        const waitStages = [_]Vk.c.VkPipelineStageFlags{Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT};
-
-        const submit_info = Vk.c.VkSubmitInfo{
-            .sType = .VK_STRUCTURE_TYPE_SUBMIT_INFO,
-            .pNext = null,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &self.semaphores.image_available,
-            .pWaitDstStageMask = &waitStages,
-
-            .commandBufferCount = 1,
-            .pCommandBuffers = &self.command_buffers[self.current_render_image_index],
-            .signalSemaphoreCount = 1,
-            .pSignalSemaphores = &self.semaphores.render_finished,
-        };
-        try checkVulkanResult(Vk.c.vkQueueSubmit(self.core_device_data.queues.graphics, 1, &submit_info, null));
+        try self.core_device_data.queues.graphics.submitSingle(
+            @ptrCast([*]const Vk.Semaphore, &self.semaphores.image_available)[0..1],
+            self.command_buffers[self.current_render_image_index .. self.current_render_image_index + 1],
+            @ptrCast([*]const Vk.Semaphore, &self.semaphores.render_finished)[0..1],
+            @as(u32, Vk.c.VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT),
+        );
     }
 
     pub fn present(self: Self) !void {
-        const present_info = Vk.c.VkPresentInfoKHR{
-            .sType = .VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
-            .pNext = null,
-            .waitSemaphoreCount = 1,
-            .pWaitSemaphores = &self.semaphores.render_finished,
-            .swapchainCount = 1,
-            .pSwapchains = &self.core_device_data.swap_chain.swap_chain,
-            .pImageIndices = &self.current_render_image_index,
-            .pResults = null, // Optional
+        try self.core_device_data.queues.present.waitIdle();
+        try self.core_device_data.queues.present.present(
+            @ptrCast([*]const Vk.Semaphore, &self.semaphores.render_finished)[0..1],
+            @ptrCast([*]const Vk.SwapchainKHR, &self.core_device_data.swap_chain.swap_chain)[0..1],
+            @ptrCast([*]const u32, &self.current_render_image_index)[0..1],
+        ) catch |err| switch (err) {
+            error.VkErrorOutOfDateKhr, error.VkSuboptimalKhr => {}, // recreate swapchain and return
+            else => err,
         };
-
-        try checkVulkanResult(Vk.c.vkQueueWaitIdle(self.core_device_data.queues.present));
-        if (checkVulkanResult(Vk.c.vkQueuePresentKHR(self.core_device_data.queues.present, &present_info))) {
-            return;
-        } else |err| switch (err) {
-            error.VkErrorOutOfDateKhr, error.VkSuboptimalKhr => return, // recreate swapchain and return
-            else => return err,
-        }
     }
 
     pub fn updateImageIndex(self: *Self) !void {

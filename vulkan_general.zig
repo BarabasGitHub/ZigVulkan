@@ -76,18 +76,6 @@ pub const Vk = struct {
     pub const Sampler = MakeNonOptional(c.VkSampler);
 };
 
-pub fn createCommandPool(logical_device: Vk.Device, flags: u32, transfer_family_index: u32) !Vk.CommandPool {
-    const poolInfo = Vk.c.VkCommandPoolCreateInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext = null,
-        .queueFamilyIndex = transfer_family_index,
-        .flags = flags,
-    };
-    var command_pool: Vk.CommandPool = undefined;
-    try checkVulkanResult(Vk.c.vkCreateCommandPool(@ptrCast(Vk.c.VkDevice, logical_device), &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
-    return command_pool;
-}
-
 pub fn createSemaphore(logical_device: Vk.Device) !Vk.Semaphore {
     const semaphoreInfo = Vk.c.VkSemaphoreCreateInfo{
         .sType = .VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO,

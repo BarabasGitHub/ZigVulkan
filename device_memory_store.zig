@@ -143,8 +143,8 @@ pub const DeviceMemoryStore = struct {
         transfer_queue_ownership_semaphore: Vk.Semaphore,
         pub fn init(logical_device: Vk.Device, queues: Queues) !CommandPools {
             return CommandPools{
-                .transfer = try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.transfer_index),
-                .graphics = try createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT, queues.graphics_index),
+                .transfer = try queues.transfer.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
+                .graphics = try queues.graphics.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
                 .transfer_queue_ownership_semaphore = try createSemaphore(logical_device),
             };
         }
@@ -390,15 +390,13 @@ pub const DeviceMemoryStore = struct {
             image,
             transfer_command_buffer,
             queues.transfer,
-            queues.transfer_index,
             graphics_command_buffer,
             queues.graphics,
-            queues.graphics_index,
             self.command_pools.transfer_queue_ownership_semaphore,
         );
-        try checkVulkanResult(Vk.c.vkQueueWaitIdle(queues.transfer));
+        try queues.transfer.waitIdle();
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.transfer, 1, &transfer_command_buffer);
-        try checkVulkanResult(Vk.c.vkQueueWaitIdle(queues.graphics));
+        try queues.graphics.waitIdle();
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.graphics, 1, &graphics_command_buffer);
     }
 
@@ -436,11 +434,9 @@ fn copyBufferToImage(
     buffer: Vk.Buffer,
     image: Vk.Image,
     transfer_command_buffer: Vk.CommandBuffer,
-    transfer_queue: Vk.Queue,
-    transfer_queue_family: u16,
+    transfer_queue: Queue,
     graphics_command_buffer: Vk.CommandBuffer,
-    graphics_queue: Vk.Queue,
-    graphics_queue_family: u16,
+    graphics_queue: Queue,
     transfer_queue_ownership_semaphore: Vk.Semaphore,
 ) !void {
     const begin_info = Vk.c.VkCommandBufferBeginInfo{
@@ -477,42 +473,29 @@ fn copyBufferToImage(
     };
     Vk.c.vkCmdCopyBufferToImage(transfer_command_buffer, buffer, image, .VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
 
-    transitionImageLayoutToShaderReadOnlyFromTransferDestinationSource(transfer_command_buffer, transfer_queue_family, graphics_queue_family, image, image_subresource_range);
+    transitionImageLayoutToShaderReadOnlyFromTransferDestinationSource(transfer_command_buffer, transfer_queue.family_index, graphics_queue.family_index, image, image_subresource_range);
 
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(transfer_command_buffer));
 
-    const transfer_submit_info = Vk.c.VkSubmitInfo{
-        .sType = .VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = null,
-        .waitSemaphoreCount = 0,
-        .pWaitSemaphores = null,
-        .pWaitDstStageMask = null,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &transfer_command_buffer,
-        .signalSemaphoreCount = 1,
-        .pSignalSemaphores = &transfer_queue_ownership_semaphore,
-    };
-    try checkVulkanResult(Vk.c.vkQueueSubmit(transfer_queue, 1, &transfer_submit_info, null));
+    try transfer_queue.submitSingle(
+        &[0]Vk.Semaphore{},
+        @ptrCast([*]const Vk.CommandBuffer, &transfer_command_buffer)[0..1],
+        @ptrCast([*]const Vk.Semaphore, &transfer_queue_ownership_semaphore)[0..1],
+        null,
+    );
 
     try checkVulkanResult(Vk.c.vkBeginCommandBuffer(graphics_command_buffer, &begin_info));
 
-    transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestination(transfer_queue_family, graphics_command_buffer, graphics_queue_family, image, image_subresource_range);
+    transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestination(transfer_queue.family_index, graphics_command_buffer, graphics_queue.family_index, image, image_subresource_range);
 
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(graphics_command_buffer));
 
-    const stage = @as(u32, Vk.c.VK_PIPELINE_STAGE_TRANSFER_BIT);
-    const graphics_submit_info = Vk.c.VkSubmitInfo{
-        .sType = .VK_STRUCTURE_TYPE_SUBMIT_INFO,
-        .pNext = null,
-        .waitSemaphoreCount = 1,
-        .pWaitSemaphores = &transfer_queue_ownership_semaphore,
-        .pWaitDstStageMask = &stage,
-        .commandBufferCount = 1,
-        .pCommandBuffers = &graphics_command_buffer,
-        .signalSemaphoreCount = 0,
-        .pSignalSemaphores = null,
-    };
-    try checkVulkanResult(Vk.c.vkQueueSubmit(graphics_queue, 1, &graphics_submit_info, null));
+    try graphics_queue.submitSingle(
+        @ptrCast([*]const Vk.Semaphore, &transfer_queue_ownership_semaphore)[0..1],
+        @ptrCast([*]const Vk.CommandBuffer, &graphics_command_buffer)[0..1],
+        &[0]Vk.Semaphore{},
+        @as(u32, Vk.c.VK_PIPELINE_STAGE_TRANSFER_BIT),
+    );
 }
 
 fn transitionImageLayoutToTransferDestination(command_buffer: Vk.CommandBuffer, image: Vk.Image, subresource_range: Vk.c.VkImageSubresourceRange) void {
