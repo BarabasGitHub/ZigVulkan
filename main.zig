@@ -10,6 +10,8 @@ pub usingnamespace @import("simple_render_tests.zig");
 pub usingnamespace @import("render_to_image.zig");
 pub usingnamespace @import("device_and_queues.zig");
 pub usingnamespace @import("swap_chain.zig");
+pub usingnamespace @import("pipeline_and_layout.zig");
+pub usingnamespace @import("index_utilities.zig");
 
 comptime {
     @import("std").testing.refAllDecls(@This());

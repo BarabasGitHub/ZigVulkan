@@ -87,3 +87,7 @@ pub const Shader = struct {
         };
     }
 };
+
+pub fn createShaderModuleFromEmbeddedFile(logical_device: Vk.Device, comptime file: []const u8, stage: ShaderStage) !Shader {
+    return Shader.init(logical_device, std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), stage);
+}
