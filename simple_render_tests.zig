@@ -4,11 +4,12 @@ const testing = std.testing;
 
 const glfw = @import("glfw_wrapper.zig");
 usingnamespace @import("window.zig");
-usingnamespace @import("vulkan_general.zig");
-usingnamespace @import("vulkan_instance.zig");
-usingnamespace @import("vulkan_graphics_device.zig");
-usingnamespace @import("vulkan_shader.zig");
 usingnamespace @import("device_memory_store.zig");
+usingnamespace @import("vulkan_general.zig");
+usingnamespace @import("vulkan_graphics_device.zig");
+usingnamespace @import("vulkan_image.zig");
+usingnamespace @import("vulkan_instance.zig");
+usingnamespace @import("vulkan_shader.zig");
 
 fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, clear_color: [4]f32) !void {
     const beginInfo = Vk.c.VkCommandBufferBeginInfo{
@@ -350,12 +351,20 @@ test "render multiple plain rectangles" {
     const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
     defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
 
-    var store = try DeviceMemoryStore.init(.{
-        .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1e4,
-        .maximum_uniform_buffer_size = null,
-        .buffering_mode = .Triple,
-    }, renderer.core_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        .{
+            .default_allocation_size = 1e3,
+            .default_staging_upload_buffer_size = 1e4,
+            .default_staging_download_buffer_size = 1e4,
+            .maximum_uniform_buffer_size = null,
+            .buffering_mode = .Triple,
+        },
+        renderer.core_device_data.physical_device,
+        renderer.core_device_data.logical_device,
+        renderer.core_device_data.queues.transfer,
+        renderer.core_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
     const buffer1 = try store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
@@ -363,31 +372,34 @@ test "render multiple plain rectangles" {
     std.debug.assert(store.getVkBufferForBufferId(buffer1) == store.getVkBufferForBufferId(buffer2));
     writeUniformBufferToDescriptorSet(renderer.core_device_data.logical_device, store.getVkDescriptorBufferInfoForBufferId(buffer1), descriptor_sets[0]);
 
-    const rectangles: [2]RectangleBuffer = .{ .{
-        .extent_x = 0.5,
-        .extent_y = 0.5,
-        .rotation_r = 1,
-        .rotation_i = 0,
-        .center_x = -0.5,
-        .center_y = -0.5,
-        .center_z = 0,
-        .colour_r = 1,
-        .colour_g = 0,
-        .colour_b = 0,
-        .colour_a = 1,
-    }, .{
-        .extent_x = 0.5,
-        .extent_y = 0.5,
-        .rotation_r = 1,
-        .rotation_i = 0,
-        .center_x = 0.5,
-        .center_y = 0.5,
-        .center_z = 0,
-        .colour_r = 0,
-        .colour_g = 1,
-        .colour_b = 0,
-        .colour_a = 1,
-    } };
+    const rectangles: [2]RectangleBuffer = .{
+        .{
+            .extent_x = 0.5,
+            .extent_y = 0.5,
+            .rotation_r = 1,
+            .rotation_i = 0,
+            .center_x = -0.5,
+            .center_y = -0.5,
+            .center_z = 0,
+            .colour_r = 1,
+            .colour_g = 0,
+            .colour_b = 0,
+            .colour_a = 1,
+        },
+        .{
+            .extent_x = 0.5,
+            .extent_y = 0.5,
+            .rotation_r = 1,
+            .rotation_i = 0,
+            .center_x = 0.5,
+            .center_y = 0.5,
+            .center_z = 0,
+            .colour_r = 0,
+            .colour_g = 1,
+            .colour_b = 0,
+            .colour_a = 1,
+        },
+    };
     const dynamic_offsets: [2]u32 = .{ 0, @sizeOf(RectangleBuffer) };
 
     try window.show();
@@ -568,20 +580,28 @@ test "render one textured rectangle" {
     const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
     defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
 
-    var store = try DeviceMemoryStore.init(.{
-        .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1e4,
-        .maximum_uniform_buffer_size = null,
-        .buffering_mode = .Triple,
-    }, renderer.core_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        .{
+            .default_allocation_size = 1e3,
+            .default_staging_upload_buffer_size = 1e4,
+            .default_staging_download_buffer_size = 1e4,
+            .maximum_uniform_buffer_size = null,
+            .buffering_mode = .Triple,
+        },
+        renderer.core_device_data.physical_device,
+        renderer.core_device_data.logical_device,
+        renderer.core_device_data.queues.transfer,
+        renderer.core_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
     const sampler = try createSampler(renderer.core_device_data.logical_device);
     defer Vk.c.vkDestroySampler(renderer.core_device_data.logical_device, sampler, null);
 
-    const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
+    const image_id = try store.allocateImage2D(.{ .width = 32, .height = 32 }, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R8G8B8A8_UNORM);
     const data = [_][4]u8{.{ 0xFF, 0xFF, 0xFF, 0xFF }} ++ [_][4]u8{.{ 0xFF, 0x00, 0xFF, 0xFF }} ** 31 ++ [_][4]u8{.{ 0xFF, 0xFF, 0x00, 0xFF }} ** (31 * 32);
-    try store.uploadImage2D([4]u8, image_id, 32, 32, &data, renderer.core_device_data.queues);
+    try store.uploadImage2D([4]u8, image_id, .{ .width = 32, .height = 32 }, &data, renderer.core_device_data.queues.transfer, renderer.core_device_data.queues.graphics);
     const image_info = store.getImageInformation(image_id);
     const image_view = try createImageView2D(renderer.core_device_data.logical_device, image_info.image, image_info.format);
     defer Vk.c.vkDestroyImageView(renderer.core_device_data.logical_device, image_view, null);
@@ -608,23 +628,6 @@ test "render one textured rectangle" {
         try renderer.draw();
         try renderer.present();
     }
-}
-
-fn createImageView2D(device: Vk.Device, image: Vk.Image, format: Vk.c.VkFormat) !Vk.ImageView {
-    const view_create_info = Vk.c.VkImageViewCreateInfo{
-        .sType = .VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .image = image,
-        .viewType = .VK_IMAGE_VIEW_TYPE_2D,
-        .format = format,
-        .components = .{ .r = .VK_COMPONENT_SWIZZLE_IDENTITY, .g = .VK_COMPONENT_SWIZZLE_IDENTITY, .b = .VK_COMPONENT_SWIZZLE_IDENTITY, .a = .VK_COMPONENT_SWIZZLE_IDENTITY },
-        .subresourceRange = .{ .aspectMask = Vk.c.VK_IMAGE_ASPECT_COLOR_BIT, .baseMipLevel = 0, .levelCount = Vk.c.VK_REMAINING_MIP_LEVELS, .baseArrayLayer = 0, .layerCount = Vk.c.VK_REMAINING_ARRAY_LAYERS },
-    };
-
-    var view: Vk.ImageView = undefined;
-    try checkVulkanResult(Vk.c.vkCreateImageView(device, &view_create_info, null, @ptrCast(*Vk.c.VkImageView, &view)));
-    return view;
 }
 
 fn writeUniformBufferToDescriptorSet(device: Vk.Device, buffer_info: Vk.c.VkDescriptorBufferInfo, descriptor_set: Vk.DescriptorSet) void {
@@ -662,7 +665,8 @@ fn writeImageAndSamplerToDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, v
             .pImageInfo = &image_info,
             .pBufferInfo = null,
             .pTexelBufferView = null,
-        }, .{
+        },
+        .{
             .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
             .pNext = null,
             .dstSet = descriptor_set,

@@ -8,6 +8,7 @@ usingnamespace @import("Utilities/handle_generator.zig");
 const glfw = @import("glfw_wrapper.zig");
 const Window = @import("window.zig").Window;
 usingnamespace @import("vulkan_instance.zig");
+usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
 
 usingnamespace @import("vulkan_general.zig");
@@ -103,7 +104,8 @@ pub const DeviceMemoryStore = struct {
 
     pub const ConfigurationRequest = struct {
         default_allocation_size: u64,
-        default_staging_buffer_size: u64,
+        default_staging_upload_buffer_size: u64,
+        default_staging_download_buffer_size: u64,
 
         /// if `null` it'll use the maximum from the device properties
         maximum_uniform_buffer_size: ?u64,
@@ -141,10 +143,10 @@ pub const DeviceMemoryStore = struct {
         transfer: Vk.CommandPool,
         graphics: Vk.CommandPool,
         transfer_queue_ownership_semaphore: Vk.Semaphore,
-        pub fn init(logical_device: Vk.Device, queues: Queues) !CommandPools {
+        pub fn init(logical_device: Vk.Device, transfer_queue: Queue, graphics_queue: Queue) !CommandPools {
             return CommandPools{
-                .transfer = try queues.transfer.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
-                .graphics = try queues.graphics.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
+                .transfer = try transfer_queue.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
+                .graphics = try graphics_queue.createCommandPool(logical_device, Vk.c.VK_COMMAND_POOL_CREATE_TRANSIENT_BIT),
                 .transfer_queue_ownership_semaphore = try createSemaphore(logical_device),
             };
         }
@@ -200,7 +202,8 @@ pub const DeviceMemoryStore = struct {
     logical_device: Vk.Device,
     // owned
     command_pools: CommandPools,
-    staging_buffer: StagingBuffer,
+    staging_upload_buffer: StagingBuffer,
+    staging_download_buffer: StagingBuffer,
 
     buffer_id_generator: BufferIDGenerator,
 
@@ -211,16 +214,18 @@ pub const DeviceMemoryStore = struct {
     image_id_generator: ImageIDGenerator,
     image_id_infos: std.ArrayList(ImageIdInformation),
 
-    pub fn init(requested_configuration: ConfigurationRequest, core_graphics_device_data: CoreGraphicsDeviceData, allocator: *mem.Allocator) !Self {
+    pub fn init(requested_configuration: ConfigurationRequest, physical_device: Vk.PhysicalDevice, logical_device: Vk.Device, transfer_queue: Queue, graphics_queue: Queue, allocator: *mem.Allocator) !Self {
         var self: Self = undefined;
         self.allocator = allocator;
-        self.configuration = Configuration.initFromRequest(requested_configuration, core_graphics_device_data.getPhysicalDeviceProperties().limits);
-        Vk.c.vkGetPhysicalDeviceMemoryProperties(core_graphics_device_data.physical_device, &self.physical_device_memory_properties);
-        self.logical_device = core_graphics_device_data.logical_device;
-        self.command_pools = try CommandPools.init(self.logical_device, core_graphics_device_data.queues);
+        self.configuration = Configuration.initFromRequest(requested_configuration, getPhysicalDeviceProperties(physical_device).limits);
+        Vk.c.vkGetPhysicalDeviceMemoryProperties(physical_device, &self.physical_device_memory_properties);
+        self.logical_device = logical_device;
+        self.command_pools = try CommandPools.init(self.logical_device, transfer_queue, graphics_queue);
         errdefer self.command_pools.deinit(self.logical_device);
-        self.staging_buffer = try StagingBuffer.init(requested_configuration.default_staging_buffer_size, self.physical_device_memory_properties, self.logical_device);
-        errdefer self.staging_buffer.deinit();
+        self.staging_upload_buffer = try StagingBuffer.initUpload(requested_configuration.default_staging_upload_buffer_size, self.physical_device_memory_properties, self.logical_device);
+        errdefer self.staging_upload_buffer.deinit(self.logical_device);
+        self.staging_download_buffer = try StagingBuffer.initDownload(requested_configuration.default_staging_download_buffer_size, self.physical_device_memory_properties, self.logical_device);
+        errdefer self.staging_download_buffer.deinit(self.logical_device);
         self.buffer_id_generator = @TypeOf(self.buffer_id_generator).init(allocator);
         self.buffer_allocations = @TypeOf(self.buffer_allocations).init(allocator);
         self.buffer_id_infos = @TypeOf(self.buffer_id_infos).init(allocator);
@@ -235,7 +240,8 @@ pub const DeviceMemoryStore = struct {
         // if waiting fails we will just destroy our objects
         _ = Vk.c.vkDeviceWaitIdle(self.logical_device);
         self.command_pools.deinit(self.logical_device);
-        self.staging_buffer.deinit(self.logical_device);
+        self.staging_upload_buffer.deinit(self.logical_device);
+        self.staging_download_buffer.deinit(self.logical_device);
 
         self.buffer_id_generator.deinit();
         for (self.buffer_allocations.items) |allocation| {
@@ -350,8 +356,9 @@ pub const DeviceMemoryStore = struct {
 
     // images
 
-    pub fn allocateImage2D(self: *Self, size_x: u32, size_y: u32, format: Vk.c.VkFormat) !ImageID {
-        const image = try create2DImage(size_x, size_y, format, self.logical_device);
+    pub fn allocateImage2D(self: *Self, extent: Vk.c.VkExtent2D, usage: u32, format: Vk.c.VkFormat) !ImageID {
+        std.debug.assert(usage != 0);
+        const image = try create2DImage(extent, format, usage, self.logical_device);
         errdefer Vk.c.vkDestroyImage(self.logical_device, image, null);
         const memory_requirements = getImageMemoryRequirements(self.logical_device, image);
         const device_memory = try allocateDeviceMemory(self.physical_device_memory_properties, self.logical_device, memory_requirements, Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
@@ -369,35 +376,59 @@ pub const DeviceMemoryStore = struct {
         return id;
     }
 
-    pub fn uploadImage2D(self: *Self, comptime DataType: type, image_id: ImageID, size_x: u32, size_y: u32, data: []const DataType, queues: Queues) !void {
-        std.debug.assert(size_x * size_y == data.len);
+    pub fn uploadImage2D(self: *Self, comptime DataType: type, image_id: ImageID, extent: Vk.c.VkExtent2D, data: []const DataType, transfer_queue: Queue, graphics_queue: Queue) !void {
+        std.debug.assert(extent.width * extent.height == data.len);
         const data_size = data.len * @sizeOf(DataType);
-        if (data_size > self.staging_buffer.mapped.len) {
-            var size = self.staging_buffer.mapped.len;
+        if (data_size > self.staging_upload_buffer.mapped.len) {
+            var size = self.staging_upload_buffer.mapped.len;
             while (size < data_size)
                 size += (size + 1) / 2;
-            try self.resetStagingBuffer(size);
+            try self.resetStagingUploadBuffer(size);
         }
         // TODO: When we get a real image class, copy without padding
-        std.mem.copy(u8, self.staging_buffer.mapped[0..data_size], std.mem.sliceAsBytes(data)[0..data_size]);
+        std.mem.copy(u8, self.staging_upload_buffer.mapped[0..data_size], std.mem.sliceAsBytes(data)[0..data_size]);
         const image = self.image_id_infos.items[image_id.index].image;
         const transfer_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.transfer);
         const graphics_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.graphics);
         try copyBufferToImage(
-            size_x,
-            size_y,
-            self.staging_buffer.buffer,
+            extent,
+            self.staging_upload_buffer.buffer,
             image,
             transfer_command_buffer,
-            queues.transfer,
+            transfer_queue,
             graphics_command_buffer,
-            queues.graphics,
+            graphics_queue,
             self.command_pools.transfer_queue_ownership_semaphore,
         );
-        try queues.transfer.waitIdle();
+        try transfer_queue.waitIdle();
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.transfer, 1, &transfer_command_buffer);
-        try queues.graphics.waitIdle();
+        try graphics_queue.waitIdle();
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.graphics, 1, &graphics_command_buffer);
+    }
+
+    pub fn downloadImage2DAndDiscard(self: *Self, comptime DataType: type, image_id: ImageID, image_layout: Vk.c.VkImageLayout, image_access: Vk.c.VkAccessFlags, extent: Vk.c.VkExtent2D, graphics_queue: Queue) ![]const DataType {
+        const data_size = extent.height * extent.width * @sizeOf(DataType);
+        if (data_size > self.staging_download_buffer.mapped.len) {
+            var size = self.staging_download_buffer.mapped.len;
+            while (size < data_size)
+                size += (size + 1) / 2;
+            try self.resetStagingDownloadBuffer(size);
+        }
+        const image = self.image_id_infos.items[image_id.index].image;
+        // const transfer_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.transfer);
+        const graphics_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.graphics);
+        try copyImageToBufferAndDiscard(
+            extent,
+            self.staging_download_buffer.buffer,
+            image,
+            image_layout,
+            image_access,
+            graphics_command_buffer,
+            graphics_queue,
+        );
+        try graphics_queue.waitIdle();
+        Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.graphics, 1, &graphics_command_buffer);
+        return std.mem.bytesAsSlice(DataType, @alignCast(@alignOf(DataType), self.staging_download_buffer.mapped[0..data_size]));
     }
 
     pub fn isValidImageId(self: Self, id: ImageID) bool {
@@ -409,9 +440,14 @@ pub const DeviceMemoryStore = struct {
         return self.image_id_infos.items[id.index];
     }
 
-    pub fn resetStagingBuffer(self: *Self, size: usize) !void {
-        self.staging_buffer.deinit(self.logical_device);
-        self.staging_buffer = try StagingBuffer.init(size, self.physical_device_memory_properties, self.logical_device);
+    pub fn resetStagingUploadBuffer(self: *Self, size: usize) !void {
+        self.staging_upload_buffer.deinit(self.logical_device);
+        self.staging_upload_buffer = try StagingBuffer.initUpload(size, self.physical_device_memory_properties, self.logical_device);
+    }
+
+    pub fn resetStagingDownloadBuffer(self: *Self, size: usize) !void {
+        self.staging_download_buffer.deinit(self.logical_device);
+        self.staging_download_buffer = try StagingBuffer.initDownload(size, self.physical_device_memory_properties, self.logical_device);
     }
 };
 
@@ -429,8 +465,7 @@ fn createTemporaryCommandBuffer(logical_device: Vk.Device, command_pool: Vk.Comm
 }
 
 fn copyBufferToImage(
-    size_x: u32,
-    size_y: u32,
+    extent: Vk.c.VkExtent2D,
     buffer: Vk.Buffer,
     image: Vk.Image,
     transfer_command_buffer: Vk.CommandBuffer,
@@ -465,15 +500,15 @@ fn copyBufferToImage(
 
     const buffer_image_copy = Vk.c.VkBufferImageCopy{
         .bufferOffset = 0,
-        .bufferRowLength = size_x,
-        .bufferImageHeight = size_y,
+        .bufferRowLength = extent.width,
+        .bufferImageHeight = extent.height,
         .imageSubresource = image_subresource_layers,
         .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
-        .imageExtent = .{ .width = size_x, .height = size_y, .depth = 1 },
+        .imageExtent = .{ .width = extent.width, .height = extent.height, .depth = 1 },
     };
     Vk.c.vkCmdCopyBufferToImage(transfer_command_buffer, buffer, image, .VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &buffer_image_copy);
 
-    transitionImageLayoutToShaderReadOnlyFromTransferDestinationSource(transfer_command_buffer, transfer_queue.family_index, graphics_queue.family_index, image, image_subresource_range);
+    transitionImageLayoutToShaderReadOnlyFromTransferDestinationSourceQueue(transfer_command_buffer, transfer_queue.family_index, graphics_queue.family_index, image, image_subresource_range);
 
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(transfer_command_buffer));
 
@@ -486,7 +521,7 @@ fn copyBufferToImage(
 
     try checkVulkanResult(Vk.c.vkBeginCommandBuffer(graphics_command_buffer, &begin_info));
 
-    transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestination(transfer_queue.family_index, graphics_command_buffer, graphics_queue.family_index, image, image_subresource_range);
+    transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestinationQueue(transfer_queue.family_index, graphics_command_buffer, graphics_queue.family_index, image, image_subresource_range);
 
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(graphics_command_buffer));
 
@@ -495,6 +530,71 @@ fn copyBufferToImage(
         @ptrCast([*]const Vk.CommandBuffer, &graphics_command_buffer)[0..1],
         &[0]Vk.Semaphore{},
         @as(u32, Vk.c.VK_PIPELINE_STAGE_TRANSFER_BIT),
+    );
+}
+
+fn copyImageToBufferAndDiscard(
+    extent: Vk.c.VkExtent2D,
+    buffer: Vk.Buffer,
+    image: Vk.Image,
+    layout: Vk.c.VkImageLayout,
+    image_access: Vk.c.VkAccessFlags,
+    command_buffer: Vk.CommandBuffer,
+    queue: Queue,
+) !void {
+    const begin_info = Vk.c.VkCommandBufferBeginInfo{
+        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
+        .pNext = null,
+        .flags = Vk.c.VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT,
+        .pInheritanceInfo = null,
+    };
+    try checkVulkanResult(Vk.c.vkBeginCommandBuffer(command_buffer, &begin_info));
+
+    const image_subresource_layers = Vk.c.VkImageSubresourceLayers{
+        .aspectMask = Vk.c.VK_IMAGE_ASPECT_COLOR_BIT,
+        .mipLevel = 0,
+        .baseArrayLayer = 0,
+        .layerCount = 1,
+    };
+    const image_subresource_range = Vk.c.VkImageSubresourceRange{
+        .aspectMask = image_subresource_layers.aspectMask,
+        .baseMipLevel = 0,
+        .levelCount = 1,
+        .baseArrayLayer = image_subresource_layers.baseArrayLayer,
+        .layerCount = image_subresource_layers.layerCount,
+    };
+
+    transitionImageLayout(
+        command_buffer,
+        .VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        .VK_PIPELINE_STAGE_TRANSFER_BIT,
+        image_access,
+        Vk.c.VK_ACCESS_TRANSFER_READ_BIT,
+        layout,
+        .VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        Vk.c.VK_QUEUE_FAMILY_IGNORED,
+        Vk.c.VK_QUEUE_FAMILY_IGNORED,
+        image,
+        image_subresource_range,
+    );
+
+    const buffer_image_copy = Vk.c.VkBufferImageCopy{
+        .bufferOffset = 0,
+        .bufferRowLength = extent.width,
+        .bufferImageHeight = extent.height,
+        .imageSubresource = image_subresource_layers,
+        .imageOffset = .{ .x = 0, .y = 0, .z = 0 },
+        .imageExtent = .{ .width = extent.width, .height = extent.height, .depth = 1 },
+    };
+    Vk.c.vkCmdCopyImageToBuffer(command_buffer, image, .VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, buffer, 1, &buffer_image_copy);
+
+    try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
+
+    try queue.submitSingle(
+        &[0]Vk.Semaphore{},
+        @ptrCast([*]const Vk.CommandBuffer, &command_buffer)[0..1],
+        &[0]Vk.Semaphore{},
+        null,
     );
 }
 
@@ -514,7 +614,23 @@ fn transitionImageLayoutToTransferDestination(command_buffer: Vk.CommandBuffer, 
     );
 }
 
-fn transitionImageLayoutToShaderReadOnlyFromTransferDestinationSource(
+fn transitionImageLayoutToTransferSource(command_buffer: Vk.CommandBuffer, image: Vk.Image, subresource_range: Vk.c.VkImageSubresourceRange) void {
+    transitionImageLayout(
+        command_buffer,
+        .VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
+        .VK_PIPELINE_STAGE_TRANSFER_BIT,
+        0,
+        Vk.c.VK_ACCESS_TRANSFER_READ_BIT,
+        .VK_IMAGE_LAYOUT_UNDEFINED,
+        .VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+        Vk.c.VK_QUEUE_FAMILY_IGNORED,
+        Vk.c.VK_QUEUE_FAMILY_IGNORED,
+        image,
+        subresource_range,
+    );
+}
+
+fn transitionImageLayoutToShaderReadOnlyFromTransferDestinationSourceQueue(
     transfer_command_buffer: Vk.CommandBuffer,
     transfer_queue_family: u32,
     graphics_queue_family: u32,
@@ -536,7 +652,7 @@ fn transitionImageLayoutToShaderReadOnlyFromTransferDestinationSource(
     );
 }
 
-fn transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestination(
+fn transitionImageLayoutToShaderReadOnlyFromTransferDestinationDestinationQueue(
     transfer_queue_family: u32,
     graphics_command_buffer: Vk.CommandBuffer,
     graphics_queue_family: u32,
@@ -586,29 +702,6 @@ fn transitionImageLayout(
     Vk.c.vkCmdPipelineBarrier(command_buffer, @intCast(u32, @enumToInt(source_stage)), @intCast(u32, @enumToInt(destination_stage)), 0, 0, null, 0, null, 1, &memory_barrier);
 }
 
-fn create2DImage(size_x: u32, size_y: u32, format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.Image {
-    const create_info = Vk.c.VkImageCreateInfo{
-        .sType = .VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .imageType = .VK_IMAGE_TYPE_2D,
-        .format = format,
-        .extent = .{ .width = size_x, .height = size_y, .depth = 1 },
-        .mipLevels = 1,
-        .arrayLayers = 1,
-        .samples = .VK_SAMPLE_COUNT_1_BIT,
-        .tiling = .VK_IMAGE_TILING_OPTIMAL,
-        .usage = Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT,
-        .sharingMode = .VK_SHARING_MODE_EXCLUSIVE,
-        .queueFamilyIndexCount = 0,
-        .pQueueFamilyIndices = null,
-        .initialLayout = .VK_IMAGE_LAYOUT_UNDEFINED,
-    };
-    var image: Vk.Image = undefined;
-    try checkVulkanResult(Vk.c.vkCreateImage(logical_device, &create_info, null, @ptrCast(*Vk.c.VkImage, &image)));
-    return image;
-}
-
 fn findMemoryType(memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, typeFilter: u32, properties: Vk.c.VkMemoryPropertyFlags) !u32 {
     var i: u32 = 0;
     while (i < memory_properties.memoryTypeCount) {
@@ -641,8 +734,24 @@ const StagingBuffer = struct {
     device_memory: Vk.DeviceMemory,
     mapped: []u8,
 
-    pub fn init(size: u64, physical_device_memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, logical_device: Vk.Device) !Self {
+    pub fn initUpload(size: u64, physical_device_memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, logical_device: Vk.Device) !Self {
         const buffer = try createBuffer(logical_device, size, Vk.c.VK_BUFFER_USAGE_TRANSFER_SRC_BIT);
+        errdefer Vk.c.vkDestroyBuffer(logical_device, buffer, null);
+        const requirements = getBufferMemoryRequirements(logical_device, buffer);
+        const device_memory = try allocateDeviceMemory(physical_device_memory_properties, logical_device, requirements, Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
+        errdefer Vk.c.vkFreeMemory(logical_device, device_memory, null);
+        try checkVulkanResult(Vk.c.vkBindBufferMemory(logical_device, buffer, device_memory, 0));
+        var mapped: [*]u8 = undefined;
+        try checkVulkanResult(Vk.c.vkMapMemory(logical_device, device_memory, 0, size, 0, @ptrCast(*?*c_void, &mapped)));
+        return Self{
+            .buffer = buffer,
+            .device_memory = device_memory,
+            .mapped = mapped[0..size],
+        };
+    }
+
+    pub fn initDownload(size: u64, physical_device_memory_properties: Vk.c.VkPhysicalDeviceMemoryProperties, logical_device: Vk.Device) !Self {
+        const buffer = try createBuffer(logical_device, size, Vk.c.VK_BUFFER_USAGE_TRANSFER_DST_BIT);
         errdefer Vk.c.vkDestroyBuffer(logical_device, buffer, null);
         const requirements = getBufferMemoryRequirements(logical_device, buffer);
         const device_memory = try allocateDeviceMemory(physical_device_memory_properties, logical_device, requirements, Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_COHERENT_BIT);
@@ -694,14 +803,22 @@ test "Initializing a device memory store should succeed" {
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1e4,
+        .default_staging_upload_buffer_size = 1e4,
+        .default_staging_download_buffer_size = 1e4,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Single,
     };
-    const store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    const store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
     testing.expect(store.configuration.default_allocation_size >= config.default_allocation_size);
-    testing.expect(store.staging_buffer.mapped.len >= config.default_staging_buffer_size);
+    testing.expect(store.staging_upload_buffer.mapped.len >= config.default_staging_upload_buffer_size);
 }
 
 fn reserveUniformBufferStorage(store: *DeviceMemoryStore, size: u64) !DeviceMemoryStore.BufferID {
@@ -714,11 +831,19 @@ test "reserving a buffer should succeed" {
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Single,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
     const buffer_id = try reserveUniformBufferStorage(&store, 100);
     testing.expect(store.isValidBufferId(buffer_id));
@@ -730,11 +855,19 @@ test "reserving multiple buffers which fit in one allocation should result in on
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Double,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
     var buffers: [4]DeviceMemoryStore.BufferID = undefined;
     for (buffers) |*buf| {
@@ -752,11 +885,19 @@ test "reserving multiple buffers which do not fit in one allocation should have 
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Single,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
     const buffer_id1 = try reserveUniformBufferStorage(&store, store.configuration.default_allocation_size);
@@ -770,11 +911,19 @@ test "getting mapped pointers for different frames should have an offset of defa
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Triple,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
     const buffer_id = try reserveUniformBufferStorage(&store, 200);
@@ -794,14 +943,22 @@ test "Allocating a 2d image should succeed" {
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Triple,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
-    const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
+    const image_id = try store.allocateImage2D(.{ .width = 32, .height = 32 }, Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R8G8B8A8_UNORM);
     testing.expect(store.isValidImageId(image_id));
 }
 
@@ -811,14 +968,22 @@ test "Uploading a 2d image should succeed" {
 
     const config = DeviceMemoryStore.ConfigurationRequest{
         .default_allocation_size = 1e3,
-        .default_staging_buffer_size = 1,
+        .default_staging_upload_buffer_size = 1,
+        .default_staging_download_buffer_size = 1,
         .maximum_uniform_buffer_size = null,
         .buffering_mode = .Triple,
     };
-    var store = try DeviceMemoryStore.init(config, env.core_graphics_device_data, testing.allocator);
+    var store = try DeviceMemoryStore.init(
+        config,
+        env.core_graphics_device_data.physical_device,
+        env.core_graphics_device_data.logical_device,
+        env.core_graphics_device_data.queues.transfer,
+        env.core_graphics_device_data.queues.graphics,
+        testing.allocator,
+    );
     defer store.deinit();
 
-    const image_id = try store.allocateImage2D(32, 32, .VK_FORMAT_R8G8B8A8_UNORM);
+    const image_id = try store.allocateImage2D(.{ .width = 32, .height = 32 }, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R8G8B8A8_UNORM);
     const data = [_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32);
-    try store.uploadImage2D([4]u8, image_id, 32, 32, &data, env.core_graphics_device_data.queues);
+    try store.uploadImage2D([4]u8, image_id, .{ .width = 32, .height = 32 }, &data, env.core_graphics_device_data.queues.transfer, env.core_graphics_device_data.queues.graphics);
 }

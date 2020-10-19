@@ -40,7 +40,7 @@ pub fn checkVulkanResult(result: Vk.c.VkResult) !void {
         // .VK_ERROR_INVALID_EXTERNAL_HANDLE_KHR => error.VkErrorInvalidExternalHandleKhr,
         // .VK_RESULT_BEGIN_RANGE => error.VkResultBeginRange,
         // .VK_RESULT_END_RANGE => error.VkResultEndRange,
-        .VK_RESULT_RANGE_SIZE => error.VkResultRangeSize,
+        // .VK_RESULT_RANGE_SIZE => error.VkResultRangeSize,
         .VK_RESULT_MAX_ENUM => error.VkResultMaxEnum,
         else => error.VKUnknownError,
     };

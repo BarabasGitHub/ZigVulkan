@@ -7,7 +7,8 @@ pub usingnamespace @import("vulkan_instance.zig");
 pub usingnamespace @import("vulkan_shader.zig");
 pub usingnamespace @import("window.zig");
 pub usingnamespace @import("simple_render_tests.zig");
+pub usingnamespace @import("render_to_image.zig");
 
 comptime {
-    @import("std").meta.refAllDecls(@This());
+    @import("std").testing.refAllDecls(@This());
 }

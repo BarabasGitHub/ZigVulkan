@@ -6,10 +6,11 @@ const glfw = @import("glfw_wrapper.zig");
 usingnamespace @import("vulkan_general.zig");
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_surface.zig");
+usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("window.zig");
 
 // the caller owns the returned memory and is responsible for freeing it.
-fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) ![]Vk.c.VkQueueFamilyProperties {
+pub fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) ![]Vk.c.VkQueueFamilyProperties {
     var queue_family_count: u32 = undefined;
     Vk.c.vkGetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, null);
     const queue_familiy_properties = try allocator.alloc(Vk.c.VkQueueFamilyProperties, queue_family_count);
@@ -17,7 +18,7 @@ fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocat
     return queue_familiy_properties;
 }
 
-fn findGraphicsFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
+pub fn findGraphicsFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
     for (queue_familiy_properties) |properties, i| {
         if (queue_familiy_properties[i].queueCount > 0 and (queue_familiy_properties[i].queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT)) != 0) {
             return @intCast(u16, i);
@@ -101,7 +102,7 @@ pub fn findPhysicalDeviceSuitableForGraphicsAndPresenting(instance: Vk.Instance,
     }
     const devices = try allocator.alloc(Vk.PhysicalDevice, device_count);
     defer allocator.free(devices);
-    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*c]Vk.c.VkPhysicalDevice, devices.ptr)));
+    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*]Vk.c.VkPhysicalDevice, devices.ptr)));
     for (devices) |device| {
         if ((try isDeviceSuitableForGraphicsAndPresentation(device, surface, allocator)) and hasDeviceHostVisibleLocalMemory(device)) {
             return device;
@@ -127,7 +128,7 @@ pub const Queue = struct {
     family_index: u16,
     queue_index: u16,
 
-    pub fn createCommandPool(self: Queue, logical_device: Vk.Device, flags: u32) !Vk.CommandPool {
+    pub fn createCommandPool(self: Queue, logical_device: Vk.Device, flags: Vk.c.VkCommandPoolCreateFlags) !Vk.CommandPool {
         const poolInfo = Vk.c.VkCommandPoolCreateInfo{
             .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
             .pNext = null,
@@ -135,7 +136,7 @@ pub const Queue = struct {
             .flags = flags,
         };
         var command_pool: Vk.CommandPool = undefined;
-        try checkVulkanResult(Vk.c.vkCreateCommandPool(@ptrCast(Vk.c.VkDevice, logical_device), &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
+        try checkVulkanResult(Vk.c.vkCreateCommandPool(logical_device, &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
         return command_pool;
     }
 
@@ -181,7 +182,7 @@ pub const Queues = struct {
     transfer: Queue,
 };
 
-fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
+pub fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyProperties) ?u16 {
     var transfer_family: ?u16 = null;
     for (queue_familiy_properties) |properties, i| {
         // ----------------------------------------------------------
@@ -191,7 +192,7 @@ fn findTransferFamilyQueue(queue_familiy_properties: []const Vk.c.VkQueueFamilyP
         // ----------------------------------------------------------
         // Thus we check if it has any of these capabilities and prefer a dedicated one
         if (properties.queueCount > 0 and (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_TRANSFER_BIT | Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) != 0 and
-        // prefer dedicated transfer queue
+            // prefer dedicated transfer queue
             (transfer_family == null or (properties.queueFlags & @as(u32, Vk.c.VK_QUEUE_GRAPHICS_BIT | Vk.c.VK_QUEUE_COMPUTE_BIT)) == 0))
         {
             transfer_family = @intCast(u16, i);
@@ -261,7 +262,7 @@ fn createLogicalDeviceAndQueues(physical_device: Vk.PhysicalDevice, surface: Vk.
     queues.transfer.queue_index = 0;
 }
 
-fn destroyDevice(device: Vk.c.VkDevice) void {
+pub fn destroyDevice(device: Vk.c.VkDevice) void {
     Vk.c.vkDestroyDevice(device, null);
 }
 
@@ -276,7 +277,7 @@ test "Creating logical device and queues should succeed on my pc" {
     defer destroySurface(instance, surface);
     const physical_device = try findPhysicalDeviceSuitableForGraphicsAndPresenting(instance, surface, testing.allocator);
 
-    var logical_device: std.meta.Child(Vk.c.VkDevice) = undefined;
+    var logical_device: Vk.Device = undefined;
     var queues: Queues = .{ .graphics = undefined, .present = undefined, .transfer = undefined };
     try createLogicalDeviceAndQueues(physical_device, surface, testing.allocator, &logical_device, &queues);
     defer destroyDevice(logical_device);
@@ -496,13 +497,13 @@ pub const CoreGraphicsDeviceData = struct {
         destroyDevice(self.logical_device);
         destroySurface(instance, self.surface);
     }
-
-    pub fn getPhysicalDeviceProperties(self: Self) Vk.c.VkPhysicalDeviceProperties {
-        var device_properties: Vk.c.VkPhysicalDeviceProperties = undefined;
-        Vk.c.vkGetPhysicalDeviceProperties(self.physical_device, &device_properties);
-        return device_properties;
-    }
 };
+
+pub fn getPhysicalDeviceProperties(physical_device: Vk.PhysicalDevice) Vk.c.VkPhysicalDeviceProperties {
+    var device_properties: Vk.c.VkPhysicalDeviceProperties = undefined;
+    Vk.c.vkGetPhysicalDeviceProperties(physical_device, &device_properties);
+    return device_properties;
+}
 
 test "initializing and de-initializing CoreGraphicsDeviceData should succeed on my pc" {
     try glfw.init();
@@ -518,19 +519,7 @@ test "initializing and de-initializing CoreGraphicsDeviceData should succeed on 
     core_graphics_device_data.deinit(instance);
 }
 
-fn createGraphicsCommandPool(logical_device: Vk.Device, graphics_family_index: u32) !Vk.CommandPool {
-    const poolInfo = Vk.c.VkCommandPoolCreateInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
-        .pNext = null,
-        .queueFamilyIndex = graphics_family_index,
-        .flags = Vk.c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT, // Optional
-    };
-    var command_pool: Vk.CommandPool = undefined;
-    try checkVulkanResult(Vk.c.vkCreateCommandPool(logical_device, &poolInfo, null, @ptrCast(*Vk.c.VkCommandPool, &command_pool)));
-    return command_pool;
-}
-
-const destroyCommandPool = Vk.c.vkDestroyCommandPool;
+pub const destroyCommandPool = Vk.c.vkDestroyCommandPool;
 
 fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
     const pool_sizes = [_]Vk.c.VkDescriptorPoolSize{
@@ -568,7 +557,7 @@ fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
 
 const destroyDescriptorPool = Vk.c.vkDestroyDescriptorPool;
 
-fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.RenderPass {
+pub fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.RenderPass {
     const colorAttachment = Vk.c.VkAttachmentDescription{
         .format = display_image_format,
         .samples = .VK_SAMPLE_COUNT_1_BIT,
@@ -626,38 +615,11 @@ fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Devi
     return render_pass;
 }
 
-const destroyRenderPass = Vk.c.vkDestroyRenderPass;
+pub const destroyRenderPass = Vk.c.vkDestroyRenderPass;
 
-fn createFramebuffers(logical_device: Vk.Device, render_pass: Vk.RenderPass, image_views: []const Vk.ImageView, image_extent: Vk.c.VkExtent2D, allocator: *mem.Allocator) ![]Vk.Framebuffer {
-    const frame_buffers = try allocator.alloc(Vk.Framebuffer, image_views.len);
-    for (image_views) |image_view, i| {
-        const framebuffer_info = Vk.c.VkFramebufferCreateInfo{
-            .sType = .VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO,
-            .pNext = null,
-            .flags = 0,
-            .renderPass = render_pass,
-            .attachmentCount = 1,
-            .pAttachments = &image_view,
-            .width = image_extent.width,
-            .height = image_extent.height,
-            .layers = 1,
-        };
-        try checkVulkanResult(Vk.c.vkCreateFramebuffer(logical_device, &framebuffer_info, null, @ptrCast(*Vk.c.VkFramebuffer, frame_buffers.ptr + i)));
-        // TODO: somehow clean up in case of an error.
-    }
-    return frame_buffers;
-}
-
-const destroyFramebuffer = Vk.c.vkDestroyFramebuffer;
-
-fn destroyFramebuffers(logical_device: Vk.Device, frame_buffers: []Vk.Framebuffer) void {
-    for (frame_buffers) |frame_buffer| {
-        destroyFramebuffer(logical_device, frame_buffer, null);
-    }
-}
-
-fn createCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, frame_buffers: []Vk.Framebuffer, allocator: *mem.Allocator) ![]Vk.CommandBuffer {
+pub fn createCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, frame_buffers: []Vk.Framebuffer, allocator: *mem.Allocator) ![]Vk.CommandBuffer {
     const command_buffers = try allocator.alloc(Vk.CommandBuffer, frame_buffers.len);
+    errdefer allocator.free(command_buffers);
     const allocInfo = Vk.c.VkCommandBufferAllocateInfo{
         .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
         .pNext = null,
@@ -669,7 +631,7 @@ fn createCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool,
     return command_buffers;
 }
 
-fn freeCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, command_buffers: []Vk.CommandBuffer) void {
+pub fn freeCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, command_buffers: []Vk.CommandBuffer) void {
     Vk.c.vkFreeCommandBuffers(logical_device, command_pool, @intCast(u32, command_buffers.len), command_buffers.ptr);
 }
 
@@ -725,7 +687,7 @@ pub const Renderer = struct {
         errdefer destroyInstance(instance, null);
         const core_device_data = try CoreGraphicsDeviceData.init(instance, window, allocator);
         errdefer core_device_data.deinit(instance);
-        const graphics_command_pool = try createGraphicsCommandPool(core_device_data.logical_device, core_device_data.queues.graphics.family_index);
+        const graphics_command_pool = try core_device_data.queues.graphics.createCommandPool(core_device_data.logical_device, Vk.c.VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT);
         errdefer destroyCommandPool(core_device_data.logical_device, graphics_command_pool, null);
         const descriptor_pool = try createDescriptorPool(core_device_data.logical_device);
         errdefer destroyDescriptorPool(core_device_data.logical_device, descriptor_pool, null);
