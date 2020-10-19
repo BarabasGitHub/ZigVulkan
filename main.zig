@@ -8,6 +8,8 @@ pub usingnamespace @import("vulkan_shader.zig");
 pub usingnamespace @import("window.zig");
 pub usingnamespace @import("simple_render_tests.zig");
 pub usingnamespace @import("render_to_image.zig");
+pub usingnamespace @import("device_and_queues.zig");
+pub usingnamespace @import("swap_chain.zig");
 
 comptime {
     @import("std").testing.refAllDecls(@This());

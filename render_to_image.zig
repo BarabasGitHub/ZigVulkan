@@ -7,6 +7,8 @@ usingnamespace @import("vulkan_general.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
 usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("vulkan_instance.zig");
+usingnamespace @import("physical_device.zig");
+usingnamespace @import("device_and_queues.zig");
 
 fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, image_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, clear_color: [4]f32) !void {
     const beginInfo = Vk.c.VkCommandBufferBeginInfo{
@@ -35,87 +37,6 @@ fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, image_extent: Vk.c.V
 
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
 }
-
-fn findPhysicalDeviceSuitableForGraphics(instance: Vk.Instance, allocator: *mem.Allocator) !Vk.PhysicalDevice {
-    var device_count: u32 = 0;
-    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, null));
-    if (device_count == 0) {
-        return error.NoDeviceWithVulkanSupportFound;
-    }
-    const devices = try allocator.alloc(Vk.PhysicalDevice, device_count);
-    defer allocator.free(devices);
-    try checkVulkanResult(Vk.c.vkEnumeratePhysicalDevices(instance, &device_count, @ptrCast([*]Vk.c.VkPhysicalDevice, devices.ptr)));
-    for (devices) |device| {
-        const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(device, allocator);
-        defer allocator.free(queue_familiy_properties);
-        if (findGraphicsFamilyQueue(queue_familiy_properties) != null) {
-            return device;
-        }
-    }
-    return error.FailedToFindSuitableVulkanDevice;
-}
-
-const DeviceAndQueues = struct {
-    device: Vk.Device,
-    graphics_queue: Queue,
-    transfer_queue: Queue,
-};
-
-fn createLogicalDeviceAndQueusForGraphics(physical_device: Vk.PhysicalDevice, allocator: *mem.Allocator) !DeviceAndQueues {
-    const queue_familiy_properties = try getPhysicalDeviceQueueFamiliyPropeties(physical_device, allocator);
-    defer allocator.free(queue_familiy_properties);
-    const graphics_family = findGraphicsFamilyQueue(queue_familiy_properties).?;
-    const transfer_family = findTransferFamilyQueue(queue_familiy_properties).?;
-
-    var queue_create_infos: [2]Vk.c.VkDeviceQueueCreateInfo = undefined;
-    const queue_priority: f32 = 1;
-    var queue_create_info = Vk.c.VkDeviceQueueCreateInfo{
-        .sType = Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .queueFamilyIndex = graphics_family,
-        .queueCount = 1,
-        .pQueuePriorities = &queue_priority,
-    };
-    queue_create_infos[0] = queue_create_info;
-    var queue_create_info_count: u32 = 1;
-    if (graphics_family != transfer_family) {
-        queue_create_info.queueFamilyIndex = transfer_family;
-        queue_create_infos[queue_create_info_count] = queue_create_info;
-        queue_create_info_count += 1;
-    }
-    std.debug.assert(queue_create_infos.len >= queue_create_info_count);
-    const device_features = std.mem.zeroes(Vk.c.VkPhysicalDeviceFeatures);
-
-    var create_info = Vk.c.VkDeviceCreateInfo{
-        .sType = Vk.c.VkStructureType.VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-        .pNext = null,
-        .flags = 0,
-        .queueCreateInfoCount = queue_create_info_count,
-        .pQueueCreateInfos = &queue_create_infos,
-        .pEnabledFeatures = &device_features,
-        .enabledLayerCount = 0,
-        .ppEnabledLayerNames = null,
-        .enabledExtensionCount = 0,
-        .ppEnabledExtensionNames = null,
-    };
-    if (USE_DEBUG_TOOLS) {
-        create_info.enabledLayerCount = validation_layers.len;
-        create_info.ppEnabledLayerNames = @ptrCast([*c]const [*:0]const u8, validation_layers.ptr);
-    }
-    var logical_device: Vk.Device = undefined;
-    try checkVulkanResult(Vk.c.vkCreateDevice(physical_device, &create_info, null, @ptrCast(*Vk.c.VkDevice, &logical_device)));
-    var graphics_queue: Vk.Queue = undefined;
-    Vk.c.vkGetDeviceQueue(logical_device, graphics_family, 0, @ptrCast(*Vk.c.VkQueue, &graphics_queue));
-    var transfer_queue: Vk.Queue = undefined;
-    Vk.c.vkGetDeviceQueue(logical_device, transfer_family, 0, @ptrCast(*Vk.c.VkQueue, &transfer_queue));
-    return DeviceAndQueues{
-        .device = logical_device,
-        .graphics_queue = .{ .handle = graphics_queue, .family_index = graphics_family, .queue_index = 0 },
-        .transfer_queue = .{ .handle = transfer_queue, .family_index = transfer_family, .queue_index = 0 },
-    };
-}
-
 test "render an empty image" {
     try glfw.init();
     defer glfw.deinit();
@@ -125,7 +46,6 @@ test "render an empty image" {
     const device_and_queues = try createLogicalDeviceAndQueusForGraphics(physical_device, testing.allocator);
     defer destroyDevice(device_and_queues.device);
 
-    // const render_pass = try createRenderPass(.VK_FORMAT_R8G8B8A8_UNORM, device_and_queues.device);
     const image_format = Vk.c.VkFormat.VK_FORMAT_R32G32B32A32_SFLOAT;
     const render_pass = try createRenderPass(image_format, device_and_queues.device);
     defer destroyRenderPass(device_and_queues.device, render_pass, null);

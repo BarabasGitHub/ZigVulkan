@@ -32,7 +32,7 @@ fn getGlfwError() !void {
 
 pub fn init() !void {
     if (glfwInit() == GLFW_FALSE) {
-        return getGlfwError();
+        try getGlfwError();
     }
 }
 

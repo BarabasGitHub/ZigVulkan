@@ -10,6 +10,7 @@ const Window = @import("window.zig").Window;
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
+usingnamespace @import("device_and_queues.zig");
 
 usingnamespace @import("vulkan_general.zig");
 
