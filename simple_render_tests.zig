@@ -11,6 +11,8 @@ usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_shader.zig");
 usingnamespace @import("pipeline_and_layout.zig");
+usingnamespace @import("descriptor_sets.zig");
+usingnamespace @import("command_buffer.zig");
 
 fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, swap_chain_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, clear_color: [4]f32) !void {
     const beginInfo = Vk.c.VkCommandBufferBeginInfo{
@@ -48,7 +50,7 @@ test "render an empty screen" {
     var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
     defer renderer.deinit();
 
-    try window.show();
+    // try window.show();
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
         try renderer.updateImageIndex();
@@ -62,174 +64,6 @@ test "render an empty screen" {
         try renderer.draw();
         try renderer.present();
     }
-}
-
-const RectangleBuffer = packed struct {
-    extent_x: f32,
-    extent_y: f32,
-    rotation_r: f32,
-    rotation_i: f32,
-    center_x: f32,
-    center_y: f32,
-    center_z: f32,
-    _padding: u32 = undefined,
-    colour_r: f32,
-    colour_g: f32,
-    colour_b: f32,
-    colour_a: f32,
-};
-
-test "render multiple plain rectangles" {
-    try glfw.init();
-    defer glfw.deinit();
-    const window = try Window.init(200, 200, "test_window");
-    defer window.deinit();
-    var renderer = try Renderer.init(window, testApplicationInfo(), testExtensions(), testing.allocator);
-    defer renderer.deinit();
-
-    const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(renderer.core_device_data.logical_device)};
-    defer {
-        for (descriptor_set_layouts) |l|
-            Vk.c.vkDestroyDescriptorSetLayout(renderer.core_device_data.logical_device, l, null);
-    }
-
-    var descriptor_sets: [2]Vk.DescriptorSet = undefined;
-    try allocateDescriptorSet(&descriptor_set_layouts, renderer.descriptor_pool, renderer.core_device_data.logical_device, descriptor_sets[0..1]);
-    descriptor_sets[1] = descriptor_sets[0];
-
-    var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
-
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/rectangle.vert.spr", .Vertex);
-    defer fixed_rectangle.deinit(renderer.core_device_data.logical_device);
-    shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
-
-    const white_pixel = try createShaderModuleFromEmbeddedFile(renderer.core_device_data.logical_device, "Shaders/plain_colour.frag.spr", .Fragment);
-    defer white_pixel.deinit(renderer.core_device_data.logical_device);
-    shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
-
-    const pipeline_and_layout = try createGraphicsPipelineAndLayout(renderer.core_device_data.swap_chain.extent, renderer.core_device_data.logical_device, renderer.render_pass, &descriptor_set_layouts, &shader_stages);
-    defer destroyPipelineAndLayout(renderer.core_device_data.logical_device, pipeline_and_layout);
-
-    var store = try DeviceMemoryStore.init(
-        .{
-            .default_allocation_size = 1e3,
-            .default_staging_upload_buffer_size = 1e4,
-            .default_staging_download_buffer_size = 1e4,
-            .maximum_uniform_buffer_size = null,
-            .buffering_mode = .Triple,
-        },
-        renderer.core_device_data.physical_device,
-        renderer.core_device_data.logical_device,
-        renderer.core_device_data.queues.transfer,
-        renderer.core_device_data.queues.graphics,
-        testing.allocator,
-    );
-    defer store.deinit();
-
-    const buffer1 = try store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
-    const buffer2 = try store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
-    std.debug.assert(store.getVkBufferForBufferId(buffer1) == store.getVkBufferForBufferId(buffer2));
-    writeUniformBufferToDescriptorSet(renderer.core_device_data.logical_device, store.getVkDescriptorBufferInfoForBufferId(buffer1), descriptor_sets[0]);
-
-    const rectangles: [2]RectangleBuffer = .{
-        .{
-            .extent_x = 0.5,
-            .extent_y = 0.5,
-            .rotation_r = 1,
-            .rotation_i = 0,
-            .center_x = -0.5,
-            .center_y = -0.5,
-            .center_z = 0,
-            .colour_r = 1,
-            .colour_g = 0,
-            .colour_b = 0,
-            .colour_a = 1,
-        },
-        .{
-            .extent_x = 0.5,
-            .extent_y = 0.5,
-            .rotation_r = 1,
-            .rotation_i = 0,
-            .center_x = 0.5,
-            .center_y = 0.5,
-            .center_z = 0,
-            .colour_r = 0,
-            .colour_g = 1,
-            .colour_b = 0,
-            .colour_a = 1,
-        },
-    };
-    const dynamic_offsets: [2]u32 = .{ 0, @sizeOf(RectangleBuffer) };
-
-    try window.show();
-    var i: u32 = 0;
-    while (i < 10) : (i += 1) {
-        try renderer.updateImageIndex();
-        const mapped_buffer_slices = try store.getMappedBufferSlices(testing.allocator);
-        defer testing.allocator.free(mapped_buffer_slices);
-        std.debug.assert(mapped_buffer_slices.len == 1);
-        std.mem.copy(u8, mapped_buffer_slices[0], std.mem.sliceAsBytes(&rectangles));
-        try store.flushAndSwitchBuffers();
-        try fillCommandBufferWithUniformBuffers(
-            renderer.render_pass,
-            renderer.core_device_data.swap_chain.extent,
-            renderer.frame_buffers[renderer.current_render_image_index],
-            renderer.command_buffers[renderer.current_render_image_index],
-            pipeline_and_layout.graphics_pipeline,
-            pipeline_and_layout.layout,
-            &descriptor_sets,
-            &dynamic_offsets,
-            [4]f32{ 0, 0.5, 1, 1 },
-        );
-        try renderer.draw();
-        try renderer.present();
-    }
-}
-
-fn fillCommandBufferWithUniformBuffers(
-    render_pass: Vk.RenderPass,
-    swap_chain_extent: Vk.c.VkExtent2D,
-    frame_buffer: Vk.Framebuffer,
-    command_buffer: Vk.CommandBuffer,
-    graphics_pipeline: Vk.Pipeline,
-    graphics_pipeline_layout: Vk.PipelineLayout,
-    descriptor_sets: []const Vk.DescriptorSet,
-    dynamic_offsets: []const u32,
-    clear_color: [4]f32,
-) !void {
-    const beginInfo = Vk.c.VkCommandBufferBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = null,
-        .flags = Vk.c.VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = null,
-    };
-
-    try checkVulkanResult(Vk.c.vkBeginCommandBuffer(command_buffer, &beginInfo));
-
-    const clearColor = Vk.c.VkClearValue{ .color = .{ .float32 = clear_color } };
-    const renderPassInfo = Vk.c.VkRenderPassBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = null,
-        .renderPass = render_pass,
-        .framebuffer = frame_buffer,
-        .renderArea = .{ .offset = .{ .x = 0, .y = 0 }, .extent = swap_chain_extent },
-        .clearValueCount = 1,
-        .pClearValues = &clearColor,
-    };
-
-    Vk.c.vkCmdBeginRenderPass(command_buffer, &renderPassInfo, .VK_SUBPASS_CONTENTS_INLINE);
-
-    Vk.c.vkCmdBindPipeline(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-    std.debug.assert(descriptor_sets.len == dynamic_offsets.len);
-    for (descriptor_sets) |descriptor_set, i| {
-        Vk.c.vkCmdBindDescriptorSets(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline_layout, 0, 1, &descriptor_set, 1, &dynamic_offsets[i]);
-        Vk.c.vkCmdDraw(command_buffer, 6, 1, 0, 0);
-    }
-
-    Vk.c.vkCmdEndRenderPass(command_buffer);
-
-    try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
 }
 
 fn createDescriptorSetLayout(device: Vk.Device) !Vk.DescriptorSetLayout {
@@ -297,19 +131,6 @@ fn createSampler(device: Vk.Device) !Vk.Sampler {
     return sampler;
 }
 
-fn allocateDescriptorSet(layouts: []const Vk.DescriptorSetLayout, pool: Vk.DescriptorPool, logical_device: Vk.Device, sets: []Vk.DescriptorSet) !void {
-    std.debug.assert(layouts.len == sets.len);
-    const allocInfo = Vk.c.VkDescriptorSetAllocateInfo{
-        .sType = .VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
-        .pNext = null,
-        .descriptorPool = pool,
-        .descriptorSetCount = @intCast(u32, layouts.len),
-        .pSetLayouts = layouts.ptr,
-    };
-
-    try checkVulkanResult(Vk.c.vkAllocateDescriptorSets(logical_device, &allocInfo, @ptrCast(*Vk.c.VkDescriptorSet, sets.ptr)));
-}
-
 test "render one textured rectangle" {
     try glfw.init();
     defer glfw.deinit();
@@ -372,7 +193,7 @@ test "render one textured rectangle" {
     var i: u32 = 0;
     while (i < 10) : (i += 1) {
         try renderer.updateImageIndex();
-        try fillCommandBufferWithUniformBuffers(
+        try recordCommandBufferWithUniformBuffers(
             renderer.render_pass,
             renderer.core_device_data.swap_chain.extent,
             renderer.frame_buffers[renderer.current_render_image_index],
@@ -387,22 +208,6 @@ test "render one textured rectangle" {
         try renderer.draw();
         try renderer.present();
     }
-}
-
-fn writeUniformBufferToDescriptorSet(device: Vk.Device, buffer_info: Vk.c.VkDescriptorBufferInfo, descriptor_set: Vk.DescriptorSet) void {
-    const write_descriptor_sets = [_]Vk.c.VkWriteDescriptorSet{.{
-        .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-        .pNext = null,
-        .dstSet = descriptor_set,
-        .dstBinding = 1,
-        .dstArrayElement = 0,
-        .descriptorCount = 1,
-        .descriptorType = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-        .pImageInfo = null,
-        .pBufferInfo = &buffer_info,
-        .pTexelBufferView = null,
-    }};
-    Vk.c.vkUpdateDescriptorSets(device, @intCast(u32, write_descriptor_sets.len), &write_descriptor_sets[0], 0, null);
 }
 
 fn writeImageAndSamplerToDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, view: Vk.ImageView, layout: Vk.c.VkImageLayout, descriptor_set: Vk.DescriptorSet) void {

@@ -12,6 +12,8 @@ pub usingnamespace @import("device_and_queues.zig");
 pub usingnamespace @import("swap_chain.zig");
 pub usingnamespace @import("pipeline_and_layout.zig");
 pub usingnamespace @import("index_utilities.zig");
+pub usingnamespace @import("descriptor_sets.zig");
+pub usingnamespace @import("command_buffer.zig");
 
 comptime {
     @import("std").testing.refAllDecls(@This());

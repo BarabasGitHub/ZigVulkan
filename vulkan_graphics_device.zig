@@ -11,6 +11,7 @@ usingnamespace @import("window.zig");
 usingnamespace @import("device_and_queues.zig");
 usingnamespace @import("physical_device.zig");
 usingnamespace @import("swap_chain.zig");
+usingnamespace @import("descriptor_sets.zig");
 
 pub const CoreGraphicsDeviceData = struct {
     const Self = @This();
@@ -60,42 +61,6 @@ test "initializing and de-initializing CoreGraphicsDeviceData should succeed on 
 }
 
 pub const destroyCommandPool = Vk.c.vkDestroyCommandPool;
-
-fn createDescriptorPool(logical_device: Vk.Device) !Vk.DescriptorPool {
-    const pool_sizes = [_]Vk.c.VkDescriptorPoolSize{
-        .{
-            .type = .VK_DESCRIPTOR_TYPE_SAMPLER,
-            .descriptorCount = 64,
-        },
-        .{
-            .type = .VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
-            .descriptorCount = 64,
-        },
-        .{
-            .type = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER,
-            .descriptorCount = 64,
-        },
-        .{
-            .type = .VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC,
-            .descriptorCount = 64,
-        },
-    };
-
-    const pool_info = Vk.c.VkDescriptorPoolCreateInfo{
-        .sType = .VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-        .pNext = null,
-        .poolSizeCount = pool_sizes.len,
-        .pPoolSizes = &pool_sizes,
-        .maxSets = 128,
-        .flags = 0,
-    };
-
-    var descriptor_pool: Vk.DescriptorPool = undefined;
-    try checkVulkanResult(Vk.c.vkCreateDescriptorPool(logical_device, &pool_info, null, @ptrCast(*Vk.c.VkDescriptorPool, &descriptor_pool)));
-    return descriptor_pool;
-}
-
-const destroyDescriptorPool = Vk.c.vkDestroyDescriptorPool;
 
 pub fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.Device) !Vk.RenderPass {
     const colorAttachment = Vk.c.VkAttachmentDescription{
