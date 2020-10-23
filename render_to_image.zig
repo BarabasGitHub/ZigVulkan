@@ -224,11 +224,11 @@ test "render one plain rectangle" {
     const descriptor_set_layouts = [_]Vk.c.VkDescriptorSetLayout{};
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/fixed_rectangle.vert.spr", .Vertex);
+    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/fixed_rectangle.vert.spr", .Vertex);
     defer fixed_rectangle.deinit(test_env.device_and_queues.device);
     shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    const white_pixel = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/white.frag.spr", .Fragment);
+    const white_pixel = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/white.frag.spr", .Fragment);
     defer white_pixel.deinit(test_env.device_and_queues.device);
     shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
 
@@ -337,11 +337,11 @@ test "render multiple plain rectangles" {
 
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/rectangle.vert.spr", .Vertex);
+    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/rectangle.vert.spr", .Vertex);
     defer fixed_rectangle.deinit(test_env.device_and_queues.device);
     shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    const white_pixel = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/plain_colour.frag.spr", .Fragment);
+    const white_pixel = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/plain_colour.frag.spr", .Fragment);
     defer white_pixel.deinit(test_env.device_and_queues.device);
     shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
 
@@ -420,4 +420,143 @@ test "render multiple plain rectangles" {
     };
     defer testing.allocator.free(expected_image);
     testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
+}
+
+fn createSampler(device: Vk.Device) !Vk.Sampler {
+    const create_info = Vk.c.VkSamplerCreateInfo{
+        .sType = .VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext = null,
+        .flags = 0,
+        .magFilter = .VK_FILTER_NEAREST, //VK_FILTER_LINEAR;
+        .minFilter = .VK_FILTER_NEAREST, //VK_FILTER_LINEAR;
+        .mipmapMode = .VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeV = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .addressModeW = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
+        .mipLodBias = 0,
+        // .anisotropyEnable = VK_TRUE;
+        .anisotropyEnable = Vk.c.VK_FALSE,
+        .maxAnisotropy = 16,
+        .compareEnable = Vk.c.VK_FALSE,
+        .compareOp = .VK_COMPARE_OP_ALWAYS,
+        .minLod = 0,
+        .maxLod = 32,
+        .borderColor = .VK_BORDER_COLOR_INT_OPAQUE_WHITE,
+        .unnormalizedCoordinates = Vk.c.VK_FALSE,
+    };
+    var sampler: Vk.Sampler = undefined;
+    try checkVulkanResult(Vk.c.vkCreateSampler(device, &create_info, null, @ptrCast(*Vk.c.VkSampler, &sampler)));
+    return sampler;
+}
+
+test "render one textured rectangle" {
+    var test_env = try TestEnvironment.init(.{});
+    defer test_env.deinit();
+
+    const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(test_env.device_and_queues.device)};
+    defer {
+        for (descriptor_set_layouts) |l|
+            Vk.c.vkDestroyDescriptorSetLayout(test_env.device_and_queues.device, l, null);
+    }
+
+    const descriptor_pool = try createDescriptorPool(test_env.device_and_queues.device);
+    defer destroyDescriptorPool(test_env.device_and_queues.device, descriptor_pool, null);
+
+    var descriptor_sets: [descriptor_set_layouts.len]Vk.DescriptorSet = undefined;
+    try allocateDescriptorSet(&descriptor_set_layouts, descriptor_pool, test_env.device_and_queues.device, &descriptor_sets);
+
+    var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
+
+    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/fixed_uv_rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(test_env.device_and_queues.device);
+    shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
+
+    const textured_pixel = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/textured.frag.spr", .Fragment);
+    defer textured_pixel.deinit(test_env.device_and_queues.device);
+    shader_stages[1] = textured_pixel.toPipelineShaderStageCreateInfo();
+
+    const pipeline_and_layout = try createGraphicsPipelineAndLayout(test_env.settings.image_extent, test_env.device_and_queues.device, test_env.render_pass, &descriptor_set_layouts, &shader_stages);
+    defer destroyPipelineAndLayout(test_env.device_and_queues.device, pipeline_and_layout);
+
+    const sampler = try createSampler(test_env.device_and_queues.device);
+    defer Vk.c.vkDestroySampler(test_env.device_and_queues.device, sampler, null);
+
+    const texture_extent = Vk.c.VkExtent2D{ .width = 8, .height = 8 };
+    const texture_image = try allocateImage2dAndCreateView(&test_env.store, test_env.device_and_queues.device, texture_extent, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R32G32B32A32_SFLOAT);
+    defer Vk.c.vkDestroyImageView(test_env.device_and_queues.device, texture_image.view, null);
+
+    const texture_data = [_][4]f32{.{ 1, 1, 1, 1 }} ++ [_][4]f32{.{ 1, 0, 1, 1 }} ** 7 ++ [_][4]f32{.{ 1, 1, 0, 1 }} ** (7 * 8);
+    try test_env.store.uploadImage2D([4]f32, texture_image.id, texture_extent, &texture_data, test_env.device_and_queues.transfer_queue, test_env.device_and_queues.graphics_queue);
+
+    // write descriptor sets
+    writeImageAndSamplerToDescriptorSet(test_env.device_and_queues.device, sampler, texture_image.view, test_env.store.getImageInformation(texture_image.id).layout, descriptor_sets[0]);
+
+    const background_color = [4]f32{ 0, 0, 0, 0 };
+
+    try recordCommandBufferWithUniformBuffers(
+        test_env.render_pass,
+        test_env.settings.image_extent,
+        test_env.frame_buffers[0],
+        test_env.command_buffers[0],
+        pipeline_and_layout.graphics_pipeline,
+        pipeline_and_layout.layout,
+        &descriptor_sets,
+        &[1]u32{0},
+        background_color,
+    );
+
+    const data = try test_env.submitAndDownloadImageData();
+    const expected_image = im: {
+        const image_extent = test_env.settings.image_extent;
+        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
+        for (expected_image) |*color, i| {
+            const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
+            if (index2d.x < image_extent.width / 4 or index2d.x >= (image_extent.width * 3) / 4 or index2d.y < image_extent.height / 4 or index2d.y >= (image_extent.height * 3) / 4) {
+                color.* = background_color;
+            } else {
+                const texture_index = Index2D{ .x = index2d.x - image_extent.width / 4, .y = index2d.y - image_extent.height / 4 };
+                color.* = texture_data[calculate1DindexFrom2D(texture_index, texture_extent.width)];
+            }
+        }
+        break :im expected_image;
+    };
+    defer testing.allocator.free(expected_image);
+    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
+}
+
+fn writeImageAndSamplerToDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, view: Vk.ImageView, layout: Vk.c.VkImageLayout, descriptor_set: Vk.DescriptorSet) void {
+    const image_info = Vk.c.VkDescriptorImageInfo{
+        .sampler = sampler,
+        .imageView = view,
+        .imageLayout = layout,
+    };
+
+    const write_descriptor_sets = [_]Vk.c.VkWriteDescriptorSet{
+        .{
+            .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = null,
+            .dstSet = descriptor_set,
+            .dstBinding = 2,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLER,
+            .pImageInfo = &image_info,
+            .pBufferInfo = null,
+            .pTexelBufferView = null,
+        },
+        .{
+            .sType = .VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+            .pNext = null,
+            .dstSet = descriptor_set,
+            .dstBinding = 3,
+            .dstArrayElement = 0,
+            .descriptorCount = 1,
+            .descriptorType = .VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE,
+            .pImageInfo = &image_info,
+            .pBufferInfo = null,
+            .pTexelBufferView = null,
+        },
+    };
+
+    Vk.c.vkUpdateDescriptorSets(device, @intCast(u32, write_descriptor_sets.len), &write_descriptor_sets[0], 0, null);
 }

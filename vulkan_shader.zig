@@ -71,6 +71,10 @@ pub const Shader = struct {
         return Shader{ .module = try createShaderModule(shader_data, logical_device), .stage = stage };
     }
 
+    pub fn initFromEmbeddedFile(logical_device: Vk.Device, comptime file: []const u8, comptime stage: ShaderStage) !Shader {
+        return Shader.init(logical_device, std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), stage);
+    }
+
     pub fn deinit(self: Shader, logical_device: Vk.Device) void {
         destroyShaderModule(logical_device, self.module, null);
     }
@@ -87,7 +91,3 @@ pub const Shader = struct {
         };
     }
 };
-
-pub fn createShaderModuleFromEmbeddedFile(logical_device: Vk.Device, comptime file: []const u8, stage: ShaderStage) !Shader {
-    return Shader.init(logical_device, std.mem.bytesAsSlice(u32, @alignCast(@alignOf(u32), @embedFile(file))), stage);
-}
