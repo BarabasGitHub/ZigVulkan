@@ -71,55 +71,103 @@ fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, image_extent: Vk.c.V
     try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
 }
 
+const TestEnvironment = struct {
+    instance: Vk.Instance,
+    physical_device: Vk.PhysicalDevice,
+    device_and_queues: DeviceAndQueues,
+    render_pass: Vk.RenderPass,
+    store: DeviceMemoryStore,
+    image: ImageIDAndView,
+    frame_buffers: []Vk.Framebuffer,
+    settings: Settings,
+    command_pool: Vk.CommandPool,
+    command_buffers: []Vk.CommandBuffer,
+
+    const Settings = struct {
+        const image_format: Vk.c.VkFormat = Vk.c.VkFormat.VK_FORMAT_R32G32B32A32_SFLOAT;
+        image_extent: Vk.c.VkExtent2D = Vk.c.VkExtent2D{ .width = 16, .height = 16 },
+    };
+
+    pub fn init(settings: Settings) !TestEnvironment {
+        try glfw.init();
+        const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
+        errdefer destroyTestInstance(instance);
+        const physical_device = try findPhysicalDeviceSuitableForGraphics(instance, testing.allocator);
+        const device_and_queues = try createLogicalDeviceAndQueusForGraphics(physical_device, testing.allocator);
+        errdefer destroyDevice(device_and_queues.device);
+        const render_pass = try createRenderPass(Settings.image_format, device_and_queues.device);
+        errdefer destroyRenderPass(device_and_queues.device, render_pass, null);
+        var store = try createTestStore(physical_device, device_and_queues, testing.allocator);
+        errdefer store.deinit();
+        const image = try allocateImage2dAndCreateView(&store, device_and_queues.device, settings.image_extent, Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | Vk.c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT, Settings.image_format);
+        errdefer Vk.c.vkDestroyImageView(device_and_queues.device, image.view, null);
+
+        const frame_buffers = try createFramebuffers(device_and_queues.device, render_pass, @ptrCast([*]const Vk.ImageView, &image.view)[0..1], settings.image_extent, testing.allocator);
+        errdefer {
+            destroyFramebuffers(device_and_queues.device, frame_buffers);
+            testing.allocator.free(frame_buffers);
+        }
+
+        const command_pool = try device_and_queues.graphics_queue.createCommandPool(device_and_queues.device, 0);
+        errdefer destroyCommandPool(device_and_queues.device, command_pool, null);
+
+        const command_buffers = try createCommandBuffers(device_and_queues.device, command_pool, frame_buffers, testing.allocator);
+        errdefer {
+            freeCommandBuffers(device_and_queues.device, command_pool, command_buffers);
+            testing.allocator.free(command_buffers);
+        }
+
+        return TestEnvironment{
+            .instance = instance,
+            .physical_device = physical_device,
+            .device_and_queues = device_and_queues,
+            .render_pass = render_pass,
+            .store = store,
+            .image = image,
+            .frame_buffers = frame_buffers,
+            .command_pool = command_pool,
+            .command_buffers = command_buffers,
+            .settings = settings,
+        };
+    }
+
+    pub fn deinit(self: TestEnvironment) void {
+        freeCommandBuffers(self.device_and_queues.device, self.command_pool, self.command_buffers);
+        testing.allocator.free(self.command_buffers);
+        destroyCommandPool(self.device_and_queues.device, self.command_pool, null);
+        Vk.c.vkDestroyImageView(self.device_and_queues.device, self.image.view, null);
+        destroyFramebuffers(self.device_and_queues.device, self.frame_buffers);
+        testing.allocator.free(self.frame_buffers);
+        self.store.deinit();
+        destroyRenderPass(self.device_and_queues.device, self.render_pass, null);
+        destroyDevice(self.device_and_queues.device);
+        destroyTestInstance(self.instance);
+        glfw.deinit();
+    }
+
+    pub fn submitAndDownloadImageData(self: *TestEnvironment) ![]const [4]f32 {
+        try self.device_and_queues.graphics_queue.submitSingle(&[0]Vk.Semaphore{}, self.command_buffers, &[0]Vk.Semaphore{}, null);
+        try self.device_and_queues.graphics_queue.waitIdle();
+        return try self.store.downloadImage2DAndDiscard([4]f32, self.image.id, .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, self.settings.image_extent, self.device_and_queues.graphics_queue);
+    }
+};
+
 test "render an empty image" {
-    try glfw.init();
-    defer glfw.deinit();
-    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyTestInstance(instance);
-    const physical_device = try findPhysicalDeviceSuitableForGraphics(instance, testing.allocator);
-    const device_and_queues = try createLogicalDeviceAndQueusForGraphics(physical_device, testing.allocator);
-    defer destroyDevice(device_and_queues.device);
-
-    const image_format = Vk.c.VkFormat.VK_FORMAT_R32G32B32A32_SFLOAT;
-    const render_pass = try createRenderPass(image_format, device_and_queues.device);
-    defer destroyRenderPass(device_and_queues.device, render_pass, null);
-
-    var store = try createTestStore(physical_device, device_and_queues, testing.allocator);
-    defer store.deinit();
-
-    const image_extent = Vk.c.VkExtent2D{ .width = 16, .height = 16 };
-    const image = try allocateImage2dAndCreateView(&store, device_and_queues.device, image_extent, Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | Vk.c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT, image_format);
-    defer Vk.c.vkDestroyImageView(device_and_queues.device, image.view, null);
-
-    const frame_buffers = try createFramebuffers(device_and_queues.device, render_pass, @ptrCast([*]const Vk.ImageView, &image.view)[0..1], image_extent, testing.allocator);
-    defer {
-        destroyFramebuffers(device_and_queues.device, frame_buffers);
-        testing.allocator.free(frame_buffers);
-    }
-
-    const command_pool = try device_and_queues.graphics_queue.createCommandPool(device_and_queues.device, 0);
-    defer destroyCommandPool(device_and_queues.device, command_pool, null);
-
-    const command_buffers = try createCommandBuffers(device_and_queues.device, command_pool, frame_buffers, testing.allocator);
-    defer {
-        freeCommandBuffers(device_and_queues.device, command_pool, command_buffers);
-        testing.allocator.free(command_buffers);
-    }
+    var test_env = try TestEnvironment.init(.{});
+    defer test_env.deinit();
 
     const color = [4]f32{ 0, 0.5, 1, 1 };
 
     try fillCommandBufferEmptyScreen(
-        render_pass,
-        image_extent,
-        frame_buffers[0],
-        command_buffers[0],
+        test_env.render_pass,
+        test_env.settings.image_extent,
+        test_env.frame_buffers[0],
+        test_env.command_buffers[0],
         color,
     );
 
-    try device_and_queues.graphics_queue.submitSingle(&[0]Vk.Semaphore{}, command_buffers, &[0]Vk.Semaphore{}, null);
-    try device_and_queues.graphics_queue.waitIdle();
-    const data = try store.downloadImage2DAndDiscard([4]f32, image.id, .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, image_extent, device_and_queues.graphics_queue);
-    testing.expectEqual(@as(usize, image_extent.width * image_extent.height), data.len);
+    const data = try test_env.submitAndDownloadImageData();
+    testing.expectEqual(@as(usize, test_env.settings.image_extent.width * test_env.settings.image_extent.height), data.len);
     for (data) |d| {
         testing.expectEqual(color, d);
     }
@@ -170,71 +218,39 @@ fn reintepretSlice(comptime T: type, slice: anytype) []const T {
 }
 
 test "render one plain rectangle" {
-    try glfw.init();
-    defer glfw.deinit();
-    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyTestInstance(instance);
-    const physical_device = try findPhysicalDeviceSuitableForGraphics(instance, testing.allocator);
-    const device_and_queues = try createLogicalDeviceAndQueusForGraphics(physical_device, testing.allocator);
-    defer destroyDevice(device_and_queues.device);
-
-    const image_format = Vk.c.VkFormat.VK_FORMAT_R32G32B32A32_SFLOAT;
-    const render_pass = try createRenderPass(image_format, device_and_queues.device);
-    defer destroyRenderPass(device_and_queues.device, render_pass, null);
-
-    var store = try createTestStore(physical_device, device_and_queues, testing.allocator);
-    defer store.deinit();
-
-    const image_extent = Vk.c.VkExtent2D{ .width = 16, .height = 16 };
-    const image = try allocateImage2dAndCreateView(&store, device_and_queues.device, image_extent, Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | Vk.c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT, image_format);
-    defer Vk.c.vkDestroyImageView(device_and_queues.device, image.view, null);
-
-    const frame_buffers = try createFramebuffers(device_and_queues.device, render_pass, @ptrCast([*]const Vk.ImageView, &image.view)[0..1], image_extent, testing.allocator);
-    defer {
-        destroyFramebuffers(device_and_queues.device, frame_buffers);
-        testing.allocator.free(frame_buffers);
-    }
-
-    const command_pool = try device_and_queues.graphics_queue.createCommandPool(device_and_queues.device, 0);
-    defer destroyCommandPool(device_and_queues.device, command_pool, null);
-
-    const command_buffers = try createCommandBuffers(device_and_queues.device, command_pool, frame_buffers, testing.allocator);
-    defer {
-        freeCommandBuffers(device_and_queues.device, command_pool, command_buffers);
-        testing.allocator.free(command_buffers);
-    }
+    var test_env = try TestEnvironment.init(.{});
+    defer test_env.deinit();
 
     const descriptor_set_layouts = [_]Vk.c.VkDescriptorSetLayout{};
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(device_and_queues.device, "Shaders/fixed_rectangle.vert.spr", .Vertex);
-    defer fixed_rectangle.deinit(device_and_queues.device);
+    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/fixed_rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(test_env.device_and_queues.device);
     shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    const white_pixel = try createShaderModuleFromEmbeddedFile(device_and_queues.device, "Shaders/white.frag.spr", .Fragment);
-    defer white_pixel.deinit(device_and_queues.device);
+    const white_pixel = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/white.frag.spr", .Fragment);
+    defer white_pixel.deinit(test_env.device_and_queues.device);
     shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
 
-    const pipeline_and_layout = try createGraphicsPipelineAndLayout(image_extent, device_and_queues.device, render_pass, &descriptor_set_layouts, &shader_stages);
-    defer destroyPipelineAndLayout(device_and_queues.device, pipeline_and_layout);
+    const pipeline_and_layout = try createGraphicsPipelineAndLayout(test_env.settings.image_extent, test_env.device_and_queues.device, test_env.render_pass, &descriptor_set_layouts, &shader_stages);
+    defer destroyPipelineAndLayout(test_env.device_and_queues.device, pipeline_and_layout);
 
     const background_color = [4]f32{ 0, 0, 0, 0 };
 
     try fillCommandBufferWithoutDescriptors(
-        render_pass,
-        image_extent,
-        frame_buffers[0],
-        command_buffers[0],
+        test_env.render_pass,
+        test_env.settings.image_extent,
+        test_env.frame_buffers[0],
+        test_env.command_buffers[0],
         pipeline_and_layout.graphics_pipeline,
         pipeline_and_layout.layout,
         background_color,
     );
 
-    try device_and_queues.graphics_queue.submitSingle(&[0]Vk.Semaphore{}, command_buffers, &[0]Vk.Semaphore{}, null);
-    try device_and_queues.graphics_queue.waitIdle();
-    const data = try store.downloadImage2DAndDiscard([4]f32, image.id, .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, image_extent, device_and_queues.graphics_queue);
+    const data = try test_env.submitAndDownloadImageData();
     const expected_image = im: {
-        var expected_image: [image_extent.height * image_extent.width][4]f32 = undefined;
+        const image_extent = test_env.settings.image_extent;
+        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
         for (expected_image) |*color, i| {
             const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
             if (image_extent.width / 4 <= index2d.x and index2d.x < (image_extent.width * 3) / 4 and image_extent.height / 4 <= index2d.y and index2d.y < (image_extent.height * 3) / 4) {
@@ -245,7 +261,8 @@ test "render one plain rectangle" {
         }
         break :im expected_image;
     };
-    testing.expectEqualSlices(f32, reintepretSlice(f32, &expected_image), reintepretSlice(f32, data));
+    defer testing.allocator.free(expected_image);
+    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
 }
 
 const RectangleBuffer = packed struct {
@@ -302,70 +319,39 @@ fn createDescriptorSetLayout(device: Vk.Device) !Vk.DescriptorSetLayout {
 }
 
 test "render multiple plain rectangles" {
-    try glfw.init();
-    defer glfw.deinit();
-    const instance = try createTestInstance(try glfw.getRequiredInstanceExtensions());
-    defer destroyTestInstance(instance);
-    const physical_device = try findPhysicalDeviceSuitableForGraphics(instance, testing.allocator);
-    const device_and_queues = try createLogicalDeviceAndQueusForGraphics(physical_device, testing.allocator);
-    defer destroyDevice(device_and_queues.device);
+    var test_env = try TestEnvironment.init(.{});
+    defer test_env.deinit();
 
-    const image_format = Vk.c.VkFormat.VK_FORMAT_R32G32B32A32_SFLOAT;
-    const render_pass = try createRenderPass(image_format, device_and_queues.device);
-    defer destroyRenderPass(device_and_queues.device, render_pass, null);
-
-    var store = try createTestStore(physical_device, device_and_queues, testing.allocator);
-    defer store.deinit();
-
-    const image_extent = Vk.c.VkExtent2D{ .width = 16, .height = 16 };
-    const image = try allocateImage2dAndCreateView(&store, device_and_queues.device, image_extent, Vk.c.VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | Vk.c.VK_IMAGE_USAGE_TRANSFER_SRC_BIT, image_format);
-    defer Vk.c.vkDestroyImageView(device_and_queues.device, image.view, null);
-
-    const frame_buffers = try createFramebuffers(device_and_queues.device, render_pass, @ptrCast([*]const Vk.ImageView, &image.view)[0..1], image_extent, testing.allocator);
-    defer {
-        destroyFramebuffers(device_and_queues.device, frame_buffers);
-        testing.allocator.free(frame_buffers);
-    }
-
-    const command_pool = try device_and_queues.graphics_queue.createCommandPool(device_and_queues.device, 0);
-    defer destroyCommandPool(device_and_queues.device, command_pool, null);
-
-    const command_buffers = try createCommandBuffers(device_and_queues.device, command_pool, frame_buffers, testing.allocator);
-    defer {
-        freeCommandBuffers(device_and_queues.device, command_pool, command_buffers);
-        testing.allocator.free(command_buffers);
-    }
-
-    const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(device_and_queues.device)};
+    const descriptor_set_layouts = [_]Vk.DescriptorSetLayout{try createDescriptorSetLayout(test_env.device_and_queues.device)};
     defer {
         for (descriptor_set_layouts) |l|
-            Vk.c.vkDestroyDescriptorSetLayout(device_and_queues.device, l, null);
+            Vk.c.vkDestroyDescriptorSetLayout(test_env.device_and_queues.device, l, null);
     }
 
-    const descriptor_pool = try createDescriptorPool(device_and_queues.device);
-    defer destroyDescriptorPool(device_and_queues.device, descriptor_pool, null);
+    const descriptor_pool = try createDescriptorPool(test_env.device_and_queues.device);
+    defer destroyDescriptorPool(test_env.device_and_queues.device, descriptor_pool, null);
 
     var descriptor_sets: [2]Vk.DescriptorSet = undefined;
-    try allocateDescriptorSet(&descriptor_set_layouts, descriptor_pool, device_and_queues.device, descriptor_sets[0..1]);
+    try allocateDescriptorSet(&descriptor_set_layouts, descriptor_pool, test_env.device_and_queues.device, descriptor_sets[0..1]);
     descriptor_sets[1] = descriptor_sets[0];
 
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(device_and_queues.device, "Shaders/rectangle.vert.spr", .Vertex);
-    defer fixed_rectangle.deinit(device_and_queues.device);
+    const fixed_rectangle = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(test_env.device_and_queues.device);
     shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
-    const white_pixel = try createShaderModuleFromEmbeddedFile(device_and_queues.device, "Shaders/plain_colour.frag.spr", .Fragment);
-    defer white_pixel.deinit(device_and_queues.device);
+    const white_pixel = try createShaderModuleFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/plain_colour.frag.spr", .Fragment);
+    defer white_pixel.deinit(test_env.device_and_queues.device);
     shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
 
-    const pipeline_and_layout = try createGraphicsPipelineAndLayout(image_extent, device_and_queues.device, render_pass, &descriptor_set_layouts, &shader_stages);
-    defer destroyPipelineAndLayout(device_and_queues.device, pipeline_and_layout);
+    const pipeline_and_layout = try createGraphicsPipelineAndLayout(test_env.settings.image_extent, test_env.device_and_queues.device, test_env.render_pass, &descriptor_set_layouts, &shader_stages);
+    defer destroyPipelineAndLayout(test_env.device_and_queues.device, pipeline_and_layout);
 
-    const buffer1 = try store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
-    const buffer2 = try store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
-    std.debug.assert(store.getVkBufferForBufferId(buffer1) == store.getVkBufferForBufferId(buffer2));
-    writeUniformBufferToDescriptorSet(device_and_queues.device, store.getVkDescriptorBufferInfoForBufferId(buffer1), descriptor_sets[0]);
+    const buffer1 = try test_env.store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
+    const buffer2 = try test_env.store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
+    std.debug.assert(test_env.store.getVkBufferForBufferId(buffer1) == test_env.store.getVkBufferForBufferId(buffer2));
+    writeUniformBufferToDescriptorSet(test_env.device_and_queues.device, test_env.store.getVkDescriptorBufferInfoForBufferId(buffer1), descriptor_sets[0]);
 
     const background_color = [4]f32{ 0, 0, 0, 0 };
     const rectangles: [2]RectangleBuffer = .{
@@ -398,17 +384,17 @@ test "render multiple plain rectangles" {
     };
     const dynamic_offsets: [2]u32 = .{ 0, @sizeOf(RectangleBuffer) };
 
-    const mapped_buffer_slices = try store.getMappedBufferSlices(testing.allocator);
+    const mapped_buffer_slices = try test_env.store.getMappedBufferSlices(testing.allocator);
     defer testing.allocator.free(mapped_buffer_slices);
     std.debug.assert(mapped_buffer_slices.len == 1);
     std.mem.copy(u8, mapped_buffer_slices[0], std.mem.sliceAsBytes(&rectangles));
-    try store.flushAndSwitchBuffers();
+    try test_env.store.flushAndSwitchBuffers();
 
     try recordCommandBufferWithUniformBuffers(
-        render_pass,
-        image_extent,
-        frame_buffers[0],
-        command_buffers[0],
+        test_env.render_pass,
+        test_env.settings.image_extent,
+        test_env.frame_buffers[0],
+        test_env.command_buffers[0],
         pipeline_and_layout.graphics_pipeline,
         pipeline_and_layout.layout,
         &descriptor_sets,
@@ -416,11 +402,10 @@ test "render multiple plain rectangles" {
         background_color,
     );
 
-    try device_and_queues.graphics_queue.submitSingle(&[0]Vk.Semaphore{}, command_buffers, &[0]Vk.Semaphore{}, null);
-    try device_and_queues.graphics_queue.waitIdle();
-    const data = try store.downloadImage2DAndDiscard([4]f32, image.id, .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, image_extent, device_and_queues.graphics_queue);
+    const data = try test_env.submitAndDownloadImageData();
     const expected_image = im: {
-        var expected_image: [image_extent.height * image_extent.width][4]f32 = undefined;
+        const image_extent = test_env.settings.image_extent;
+        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
         for (expected_image) |*color, i| {
             const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
             if (index2d.x < image_extent.width / 2 and index2d.y < image_extent.height / 2) {
@@ -433,5 +418,6 @@ test "render multiple plain rectangles" {
         }
         break :im expected_image;
     };
-    testing.expectEqualSlices(f32, reintepretSlice(f32, &expected_image), reintepretSlice(f32, data));
+    defer testing.allocator.free(expected_image);
+    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
 }
