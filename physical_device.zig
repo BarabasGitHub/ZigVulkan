@@ -5,6 +5,12 @@ const glfw = @import("glfw_wrapper.zig");
 
 usingnamespace @import("vulkan_general.zig");
 
+pub fn getPhysicalDeviceProperties(physical_device: Vk.PhysicalDevice) Vk.c.VkPhysicalDeviceProperties {
+    var device_properties: Vk.c.VkPhysicalDeviceProperties = undefined;
+    Vk.c.vkGetPhysicalDeviceProperties(physical_device, &device_properties);
+    return device_properties;
+}
+
 // the caller owns the returned memory and is responsible for freeing it.
 pub fn getPhysicalDeviceQueueFamiliyPropeties(device: Vk.c.VkPhysicalDevice, allocator: *mem.Allocator) ![]Vk.c.VkQueueFamilyProperties {
     var queue_family_count: u32 = undefined;
@@ -42,8 +48,7 @@ fn hasGraphicsAndPresentQueueFamilies(device: Vk.c.VkPhysicalDevice, surface: Vk
 }
 
 fn isDeviceSuitableForGraphicsAndPresentation(device: Vk.PhysicalDevice, surface: Vk.SurfaceKHR, allocator: *mem.Allocator) !bool {
-    var deviceProperties: Vk.c.VkPhysicalDeviceProperties = undefined;
-    Vk.c.vkGetPhysicalDeviceProperties(device, &deviceProperties);
+    const deviceProperties = getPhysicalDeviceProperties(device);
     var deviceFeatures: Vk.c.VkPhysicalDeviceFeatures = undefined;
     Vk.c.vkGetPhysicalDeviceFeatures(device, &deviceFeatures);
 

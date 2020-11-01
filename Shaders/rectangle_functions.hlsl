@@ -14,11 +14,11 @@ float4 CreateRectangleVertex(uint vertex_index, float3 center, float2 extent, fl
     return position;
 }
 
-float2 CreateRectangleUV(uint vertex_index)
+float2 CreateRectangleUV(uint vertex_index, float2 topleft, float2 bottomright)
 {
     float2 uv;
-    // (0, 0), (1, 0), (0, 1), (1, 1), (0, 1), (1, 0)
-    uv.x = (vertex_index & 1);
-    uv.y = (vertex_index & 4) ? (1 - uv.x) : ((vertex_index & 2) / 2);
+    // (0, 0), (1, 0), (0, 1), (1, 1)
+    uv.x = (vertex_index & 1) ? bottomright.x : topleft.x;
+    uv.y = (vertex_index & 2) ? bottomright.y : topleft.y;
     return uv;
 }

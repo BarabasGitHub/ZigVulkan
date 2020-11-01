@@ -1,6 +1,7 @@
 const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
+const Data2D = @import("ZigZag").Containers.Data2D;
 const glfw = @import("glfw_wrapper.zig");
 usingnamespace @import("device_memory_store.zig");
 usingnamespace @import("vulkan_general.zig");
@@ -44,31 +45,56 @@ fn createTestStore(physical_device: Vk.PhysicalDevice, device_and_queues: Device
 }
 
 fn fillCommandBufferEmptyScreen(render_pass: Vk.RenderPass, image_extent: Vk.c.VkExtent2D, frame_buffer: Vk.Framebuffer, command_buffer: Vk.CommandBuffer, clear_color: [4]f32) !void {
-    const beginInfo = Vk.c.VkCommandBufferBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = null,
-        .flags = Vk.c.VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = null,
-    };
+    try simpleBeginCommandBuffer(command_buffer);
 
-    try checkVulkanResult(Vk.c.vkBeginCommandBuffer(command_buffer, &beginInfo));
-
-    const clearColor = Vk.c.VkClearValue{ .color = .{ .float32 = clear_color } };
-    const renderPassInfo = Vk.c.VkRenderPassBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = null,
-        .renderPass = render_pass,
-        .framebuffer = frame_buffer,
-        .renderArea = .{ .offset = .{ .x = 0, .y = 0 }, .extent = image_extent },
-        .clearValueCount = 1,
-        .pClearValues = &clearColor,
-    };
-
-    Vk.c.vkCmdBeginRenderPass(command_buffer, &renderPassInfo, .VK_SUBPASS_CONTENTS_INLINE);
+    beginRenderPassWithClearValueAndFullExtent(command_buffer, render_pass, image_extent, frame_buffer, clear_color);
 
     Vk.c.vkCmdEndRenderPass(command_buffer);
 
-    try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
+    try endCommandBuffer(command_buffer);
+}
+
+fn recordCommandBufferWithUniformBuffers(
+    render_pass: Vk.RenderPass,
+    image_extent: Vk.c.VkExtent2D,
+    frame_buffer: Vk.Framebuffer,
+    command_buffer: Vk.CommandBuffer,
+    graphics_pipeline: Vk.Pipeline,
+    graphics_pipeline_layout: Vk.PipelineLayout,
+    descriptor_sets: []const Vk.DescriptorSet,
+    dynamic_offsets: []const u32,
+    clear_color: [4]f32,
+) !void {
+    try simpleBeginCommandBuffer(command_buffer);
+
+    beginRenderPassWithClearValueAndFullExtent(command_buffer, render_pass, image_extent, frame_buffer, clear_color);
+
+    drawFourVerticesWithDynamicOffsetsForUniformBuffers(command_buffer, graphics_pipeline, graphics_pipeline_layout, descriptor_sets, dynamic_offsets);
+
+    Vk.c.vkCmdEndRenderPass(command_buffer);
+
+    try endCommandBuffer(command_buffer);
+}
+
+fn fillCommandBufferWithoutDescriptors(
+    render_pass: Vk.RenderPass,
+    image_extent: Vk.c.VkExtent2D,
+    frame_buffer: Vk.Framebuffer,
+    command_buffer: Vk.CommandBuffer,
+    graphics_pipeline: Vk.Pipeline,
+    graphics_pipeline_layout: Vk.PipelineLayout,
+    clear_color: [4]f32,
+) !void {
+    try simpleBeginCommandBuffer(command_buffer);
+
+    beginRenderPassWithClearValueAndFullExtent(command_buffer, render_pass, image_extent, frame_buffer, clear_color);
+
+    Vk.c.vkCmdBindPipeline(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
+    Vk.c.vkCmdDraw(command_buffer, 4, 1, 0, 0);
+
+    Vk.c.vkCmdEndRenderPass(command_buffer);
+
+    try endCommandBuffer(command_buffer);
 }
 
 const TestEnvironment = struct {
@@ -145,7 +171,7 @@ const TestEnvironment = struct {
         glfw.deinit();
     }
 
-    pub fn submitAndDownloadImageData(self: *TestEnvironment) ![]const [4]f32 {
+    pub fn submitAndDownloadImageData(self: *TestEnvironment) !Data2D(*const [4]f32) {
         try self.device_and_queues.graphics_queue.submitSingle(&[0]Vk.Semaphore{}, self.command_buffers, &[0]Vk.Semaphore{}, null);
         try self.device_and_queues.graphics_queue.waitIdle();
         return try self.store.downloadImage2DAndDiscard([4]f32, self.image.id, .VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, self.settings.image_extent, self.device_and_queues.graphics_queue);
@@ -153,7 +179,7 @@ const TestEnvironment = struct {
 };
 
 test "render an empty image" {
-    var test_env = try TestEnvironment.init(.{});
+    var test_env = try TestEnvironment.init(.{ .image_extent = .{ .height = 10, .width = 20 } });
     defer test_env.deinit();
 
     const color = [4]f32{ 0, 0.5, 1, 1 };
@@ -166,51 +192,10 @@ test "render an empty image" {
         color,
     );
 
-    const data = try test_env.submitAndDownloadImageData();
-    testing.expectEqual(@as(usize, test_env.settings.image_extent.width * test_env.settings.image_extent.height), data.len);
-    for (data) |d| {
-        testing.expectEqual(color, d);
-    }
-}
-
-fn fillCommandBufferWithoutDescriptors(
-    render_pass: Vk.RenderPass,
-    swap_chain_extent: Vk.c.VkExtent2D,
-    frame_buffer: Vk.Framebuffer,
-    command_buffer: Vk.CommandBuffer,
-    graphics_pipeline: Vk.Pipeline,
-    graphics_pipeline_layout: Vk.PipelineLayout,
-    clear_color: [4]f32,
-) !void {
-    const beginInfo = Vk.c.VkCommandBufferBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO,
-        .pNext = null,
-        .flags = Vk.c.VK_COMMAND_BUFFER_USAGE_SIMULTANEOUS_USE_BIT,
-        .pInheritanceInfo = null,
-    };
-
-    try checkVulkanResult(Vk.c.vkBeginCommandBuffer(command_buffer, &beginInfo));
-
-    const clearColor = Vk.c.VkClearValue{ .color = .{ .float32 = clear_color } };
-    const renderPassInfo = Vk.c.VkRenderPassBeginInfo{
-        .sType = .VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO,
-        .pNext = null,
-        .renderPass = render_pass,
-        .framebuffer = frame_buffer,
-        .renderArea = .{ .offset = .{ .x = 0, .y = 0 }, .extent = swap_chain_extent },
-        .clearValueCount = 1,
-        .pClearValues = &clearColor,
-    };
-
-    Vk.c.vkCmdBeginRenderPass(command_buffer, &renderPassInfo, .VK_SUBPASS_CONTENTS_INLINE);
-
-    Vk.c.vkCmdBindPipeline(command_buffer, .VK_PIPELINE_BIND_POINT_GRAPHICS, graphics_pipeline);
-
-    Vk.c.vkCmdDraw(command_buffer, 6, 1, 0, 0);
-
-    Vk.c.vkCmdEndRenderPass(command_buffer);
-
-    try checkVulkanResult(Vk.c.vkEndCommandBuffer(command_buffer));
+    const image = try test_env.submitAndDownloadImageData();
+    testing.expectEqual(image.row_count, test_env.settings.image_extent.height);
+    testing.expectEqual(image.column_count, test_env.settings.image_extent.width);
+    @TypeOf(image).testing.expectEqualToValue(color, image);
 }
 
 fn reintepretSlice(comptime T: type, slice: anytype) []const T {
@@ -247,22 +232,16 @@ test "render one plain rectangle" {
         background_color,
     );
 
-    const data = try test_env.submitAndDownloadImageData();
+    const image = try test_env.submitAndDownloadImageData();
     const expected_image = im: {
         const image_extent = test_env.settings.image_extent;
-        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
-        for (expected_image) |*color, i| {
-            const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
-            if (image_extent.width / 4 <= index2d.x and index2d.x < (image_extent.width * 3) / 4 and image_extent.height / 4 <= index2d.y and index2d.y < (image_extent.height * 3) / 4) {
-                color.* = .{ 1, 1, 1, 1 };
-            } else {
-                color.* = background_color;
-            }
-        }
-        break :im expected_image;
+        var expected_image = Data2D(*[4]f32).fromSlice(try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width), image_extent.height, image_extent.width);
+        expected_image.setAll(background_color);
+        expected_image.subRange(image_extent.width / 4, image_extent.height / 4, image_extent.width / 2, image_extent.height / 2).setAll(.{ 1, 1, 1, 1 });
+        break :im expected_image.toConst();
     };
-    defer testing.allocator.free(expected_image);
-    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
+    defer testing.allocator.free(expected_image.toSlice());
+    @TypeOf(image).testing.expectEqualContent(expected_image, image);
 }
 
 const RectangleBuffer = packed struct {
@@ -274,6 +253,10 @@ const RectangleBuffer = packed struct {
     center_y: f32,
     center_z: f32,
     _padding: u32 = undefined,
+    uv_topleft_x: f32,
+    uv_topleft_y: f32,
+    uv_bottomright_x: f32,
+    uv_bottomright_y: f32,
     colour_r: f32,
     colour_g: f32,
     colour_b: f32,
@@ -337,7 +320,7 @@ test "render multiple plain rectangles" {
 
     var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
 
-    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/rectangle.vert.spr", .Vertex);
+    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/plain_rectangle.vert.spr", .Vertex);
     defer fixed_rectangle.deinit(test_env.device_and_queues.device);
     shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
 
@@ -363,6 +346,10 @@ test "render multiple plain rectangles" {
             .center_x = -0.5,
             .center_y = -0.5,
             .center_z = 0,
+            .uv_topleft_x = undefined,
+            .uv_topleft_y = undefined,
+            .uv_bottomright_x = undefined,
+            .uv_bottomright_y = undefined,
             .colour_r = 1,
             .colour_g = 0,
             .colour_b = 0,
@@ -376,6 +363,10 @@ test "render multiple plain rectangles" {
             .center_x = 0.5,
             .center_y = 0.5,
             .center_z = 0,
+            .uv_topleft_x = undefined,
+            .uv_topleft_y = undefined,
+            .uv_bottomright_x = undefined,
+            .uv_bottomright_y = undefined,
             .colour_r = 0,
             .colour_g = 1,
             .colour_b = 0,
@@ -405,21 +396,18 @@ test "render multiple plain rectangles" {
     const data = try test_env.submitAndDownloadImageData();
     const expected_image = im: {
         const image_extent = test_env.settings.image_extent;
-        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
-        for (expected_image) |*color, i| {
-            const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
-            if (index2d.x < image_extent.width / 2 and index2d.y < image_extent.height / 2) {
-                color.* = .{ rectangles[0].colour_r, rectangles[0].colour_g, rectangles[0].colour_b, rectangles[0].colour_a };
-            } else if (index2d.x >= image_extent.width / 2 and index2d.y >= image_extent.height / 2) {
-                color.* = .{ rectangles[1].colour_r, rectangles[1].colour_g, rectangles[1].colour_b, rectangles[1].colour_a };
-            } else {
-                color.* = background_color;
-            }
-        }
-        break :im expected_image;
+        var expected_image = Data2D(*[4]f32).fromSlice(try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width), image_extent.height, image_extent.width);
+        expected_image.setAll(background_color);
+        expected_image.subRange(0, 0, image_extent.width / 2, image_extent.height / 2).setAll(
+            .{ rectangles[0].colour_r, rectangles[0].colour_g, rectangles[0].colour_b, rectangles[0].colour_a },
+        );
+        expected_image.subRange(image_extent.width / 2, image_extent.height / 2, image_extent.width / 2, image_extent.height / 2).setAll(
+            .{ rectangles[1].colour_r, rectangles[1].colour_g, rectangles[1].colour_b, rectangles[1].colour_a },
+        );
+        break :im expected_image.toConst();
     };
-    defer testing.allocator.free(expected_image);
-    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
+    defer testing.allocator.free(expected_image.toSlice());
+    @TypeOf(data).testing.expectEqualContent(expected_image, data);
 }
 
 fn createSampler(device: Vk.Device) !Vk.Sampler {
@@ -434,7 +422,6 @@ fn createSampler(device: Vk.Device) !Vk.Sampler {
         .addressModeV = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .addressModeW = .VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE,
         .mipLodBias = 0,
-        // .anisotropyEnable = VK_TRUE;
         .anisotropyEnable = Vk.c.VK_FALSE,
         .maxAnisotropy = 16,
         .compareEnable = Vk.c.VK_FALSE,
@@ -485,8 +472,8 @@ test "render one textured rectangle" {
     const texture_image = try allocateImage2dAndCreateView(&test_env.store, test_env.device_and_queues.device, texture_extent, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R32G32B32A32_SFLOAT);
     defer Vk.c.vkDestroyImageView(test_env.device_and_queues.device, texture_image.view, null);
 
-    const texture_data = [_][4]f32{.{ 1, 1, 1, 1 }} ++ [_][4]f32{.{ 1, 0, 1, 1 }} ** 7 ++ [_][4]f32{.{ 1, 1, 0, 1 }} ** (7 * 8);
-    try test_env.store.uploadImage2D([4]f32, texture_image.id, texture_extent, &texture_data, test_env.device_and_queues.transfer_queue, test_env.device_and_queues.graphics_queue);
+    const texture_data = Data2D(*const [4]f32).fromSlice(&[_][4]f32{.{ 1, 1, 1, 1 }} ++ [_][4]f32{.{ 1, 0, 1, 1 }} ** 7 ++ [_][4]f32{.{ 1, 1, 0, 1 }} ** (7 * 8), texture_extent.width, texture_extent.height);
+    try test_env.store.uploadImage2D([4]f32, texture_image.id, texture_data, test_env.device_and_queues.transfer_queue, test_env.device_and_queues.graphics_queue);
 
     // write descriptor sets
     writeImageAndSamplerToDescriptorSet(test_env.device_and_queues.device, sampler, texture_image.view, test_env.store.getImageInformation(texture_image.id).layout, descriptor_sets[0]);
@@ -508,20 +495,13 @@ test "render one textured rectangle" {
     const data = try test_env.submitAndDownloadImageData();
     const expected_image = im: {
         const image_extent = test_env.settings.image_extent;
-        var expected_image = try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width);
-        for (expected_image) |*color, i| {
-            const index2d = calculate2DindexFrom1D(@intCast(u32, i), image_extent.width);
-            if (index2d.x < image_extent.width / 4 or index2d.x >= (image_extent.width * 3) / 4 or index2d.y < image_extent.height / 4 or index2d.y >= (image_extent.height * 3) / 4) {
-                color.* = background_color;
-            } else {
-                const texture_index = Index2D{ .x = index2d.x - image_extent.width / 4, .y = index2d.y - image_extent.height / 4 };
-                color.* = texture_data[calculate1DindexFrom2D(texture_index, texture_extent.width)];
-            }
-        }
-        break :im expected_image;
+        var expected_image = Data2D(*[4]f32).fromSlice(try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width), image_extent.width, image_extent.height);
+        expected_image.setAll(background_color);
+        expected_image.subRange(image_extent.width / 4, image_extent.height / 4, image_extent.width / 2, image_extent.height / 2).copyContentFrom(texture_data);
+        break :im expected_image.toConst();
     };
-    defer testing.allocator.free(expected_image);
-    testing.expectEqualSlices(f32, reintepretSlice(f32, expected_image), reintepretSlice(f32, data));
+    defer testing.allocator.free(expected_image.toSlice());
+    @TypeOf(data).testing.expectEqualContent(expected_image, data);
 }
 
 fn writeImageAndSamplerToDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, view: Vk.ImageView, layout: Vk.c.VkImageLayout, descriptor_set: Vk.DescriptorSet) void {
@@ -559,4 +539,127 @@ fn writeImageAndSamplerToDescriptorSet(device: Vk.Device, sampler: Vk.Sampler, v
     };
 
     Vk.c.vkUpdateDescriptorSets(device, @intCast(u32, write_descriptor_sets.len), &write_descriptor_sets[0], 0, null);
+}
+
+test "render multiple textured rectangles" {
+    var test_env = try TestEnvironment.init(.{});
+    defer test_env.deinit();
+
+    var descriptor_set_layouts = [2]Vk.DescriptorSetLayout{ try createDescriptorSetLayout(test_env.device_and_queues.device), undefined };
+    descriptor_set_layouts[1] = descriptor_set_layouts[0];
+    defer Vk.c.vkDestroyDescriptorSetLayout(test_env.device_and_queues.device, descriptor_set_layouts[0], null);
+
+    const descriptor_pool = try createDescriptorPool(test_env.device_and_queues.device);
+    defer destroyDescriptorPool(test_env.device_and_queues.device, descriptor_pool, null);
+
+    var descriptor_sets: [2]Vk.DescriptorSet = undefined;
+    try allocateDescriptorSet(&descriptor_set_layouts, descriptor_pool, test_env.device_and_queues.device, &descriptor_sets);
+
+    var shader_stages: [2]Vk.c.VkPipelineShaderStageCreateInfo = undefined;
+
+    const fixed_rectangle = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/textured_rectangle.vert.spr", .Vertex);
+    defer fixed_rectangle.deinit(test_env.device_and_queues.device);
+    shader_stages[0] = fixed_rectangle.toPipelineShaderStageCreateInfo();
+
+    const white_pixel = try Shader.initFromEmbeddedFile(test_env.device_and_queues.device, "Shaders/textured.frag.spr", .Fragment);
+    defer white_pixel.deinit(test_env.device_and_queues.device);
+    shader_stages[1] = white_pixel.toPipelineShaderStageCreateInfo();
+
+    const pipeline_and_layout = try createGraphicsPipelineAndLayout(test_env.settings.image_extent, test_env.device_and_queues.device, test_env.render_pass, &descriptor_set_layouts, &shader_stages);
+    defer destroyPipelineAndLayout(test_env.device_and_queues.device, pipeline_and_layout);
+
+    const sampler = try createSampler(test_env.device_and_queues.device);
+    defer Vk.c.vkDestroySampler(test_env.device_and_queues.device, sampler, null);
+
+    const texture_extent = Vk.c.VkExtent2D{ .width = 8, .height = 8 };
+    const texture_image1 = try allocateImage2dAndCreateView(&test_env.store, test_env.device_and_queues.device, texture_extent, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R32G32B32A32_SFLOAT);
+    defer Vk.c.vkDestroyImageView(test_env.device_and_queues.device, texture_image1.view, null);
+
+    const texture_data1 = Data2D(*const [4]f32).fromSlice(&[_][4]f32{.{ 1, 1, 1, 1 }} ++ [_][4]f32{.{ 1, 0, 1, 1 }} ** 7 ++ [_][4]f32{.{ 1, 1, 0, 1 }} ** (7 * 8), texture_extent.width, texture_extent.height);
+    try test_env.store.uploadImage2D([4]f32, texture_image1.id, texture_data1, test_env.device_and_queues.transfer_queue, test_env.device_and_queues.graphics_queue);
+
+    const texture_image2 = try allocateImage2dAndCreateView(&test_env.store, test_env.device_and_queues.device, texture_extent, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R32G32B32A32_SFLOAT);
+    defer Vk.c.vkDestroyImageView(test_env.device_and_queues.device, texture_image2.view, null);
+
+    const texture_data2 = Data2D(*const [4]f32).fromSlice(&[_][4]f32{.{ 1, 1, 1, 1 }} ** (7 * 8) ++ [_][4]f32{.{ 1, 1, 0, 1 }} ++ [_][4]f32{.{ 0, 1, 1, 1 }} ** 7, texture_extent.width, texture_extent.height);
+    try test_env.store.uploadImage2D([4]f32, texture_image2.id, texture_data2, test_env.device_and_queues.transfer_queue, test_env.device_and_queues.graphics_queue);
+
+    const buffer1 = try test_env.store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
+    const buffer2 = try test_env.store.reserveBufferSpace(@sizeOf(RectangleBuffer), .{ .usage = Vk.c.VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT, .properties = Vk.c.VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT | Vk.c.VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT });
+
+    // write descriptor sets
+    writeImageAndSamplerToDescriptorSet(test_env.device_and_queues.device, sampler, texture_image1.view, test_env.store.getImageInformation(texture_image1.id).layout, descriptor_sets[0]);
+    writeImageAndSamplerToDescriptorSet(test_env.device_and_queues.device, sampler, texture_image2.view, test_env.store.getImageInformation(texture_image2.id).layout, descriptor_sets[1]);
+    writeUniformBufferToDescriptorSet(test_env.device_and_queues.device, test_env.store.getVkDescriptorBufferInfoForBufferId(buffer1), descriptor_sets[0]);
+    writeUniformBufferToDescriptorSet(test_env.device_and_queues.device, test_env.store.getVkDescriptorBufferInfoForBufferId(buffer2), descriptor_sets[1]);
+
+    const background_color = [4]f32{ 0, 0, 0, 0 };
+    const rectangles: [2]RectangleBuffer = .{
+        .{
+            .extent_x = 0.5,
+            .extent_y = 0.5,
+            .rotation_r = 1,
+            .rotation_i = 0,
+            .center_x = -0.5,
+            .center_y = -0.5,
+            .center_z = 0,
+            .uv_topleft_x = 0,
+            .uv_topleft_y = 0,
+            .uv_bottomright_x = 1,
+            .uv_bottomright_y = 1,
+            .colour_r = undefined,
+            .colour_g = undefined,
+            .colour_b = undefined,
+            .colour_a = undefined,
+        },
+        .{
+            .extent_x = 0.5,
+            .extent_y = 0.5,
+            .rotation_r = 1,
+            .rotation_i = 0,
+            .center_x = 0.5,
+            .center_y = 0.5,
+            .center_z = 0,
+            .uv_topleft_x = 0,
+            .uv_topleft_y = 0,
+            .uv_bottomright_x = 1,
+            .uv_bottomright_y = 1,
+            .colour_r = undefined,
+            .colour_g = undefined,
+            .colour_b = undefined,
+            .colour_a = undefined,
+        },
+    };
+    const dynamic_offsets: [2]u32 = .{ 0, @sizeOf(RectangleBuffer) };
+
+    const mapped_buffer_slices = try test_env.store.getMappedBufferSlices(testing.allocator);
+    defer testing.allocator.free(mapped_buffer_slices);
+    std.debug.assert(mapped_buffer_slices.len == 1);
+    std.mem.copy(u8, mapped_buffer_slices[0], std.mem.sliceAsBytes(&rectangles));
+    try test_env.store.flushAndSwitchBuffers();
+
+    try recordCommandBufferWithUniformBuffers(
+        test_env.render_pass,
+        test_env.settings.image_extent,
+        test_env.frame_buffers[0],
+        test_env.command_buffers[0],
+        pipeline_and_layout.graphics_pipeline,
+        pipeline_and_layout.layout,
+        &descriptor_sets,
+        &dynamic_offsets,
+        background_color,
+    );
+
+    const data = try test_env.submitAndDownloadImageData();
+
+    const expected_image = im: {
+        const image_extent = test_env.settings.image_extent;
+        var expected_image = Data2D(*[4]f32).fromSlice(try testing.allocator.alloc([4]f32, image_extent.height * image_extent.width), image_extent.height, image_extent.width);
+        expected_image.setAll(background_color);
+        expected_image.subRange(0, 0, image_extent.width / 2, image_extent.height / 2).copyContentFrom(texture_data1);
+        expected_image.subRange(image_extent.width / 2, image_extent.height / 2, image_extent.width / 2, image_extent.height / 2).copyContentFrom(texture_data2);
+        break :im expected_image.toConst();
+    };
+    defer testing.allocator.free(expected_image.toSlice());
+    @TypeOf(data).testing.expectEqualContent(expected_image, data);
 }

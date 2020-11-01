@@ -61,7 +61,8 @@ pub fn build(b: *Builder) !void {
     main_tests.step.dependOn(&(try addShader(b, "white.frag.hlsl", "white.frag.spr")).step);
     main_tests.step.dependOn(&(try addShader(b, "fixed_uv_rectangle.vert.hlsl", "fixed_uv_rectangle.vert.spr")).step);
     main_tests.step.dependOn(&(try addShader(b, "textured.frag.hlsl", "textured.frag.spr")).step);
-    main_tests.step.dependOn(&(try addShader(b, "rectangle.vert.hlsl", "rectangle.vert.spr")).step);
+    main_tests.step.dependOn(&(try addShader(b, "plain_rectangle.vert.hlsl", "plain_rectangle.vert.spr")).step);
+    main_tests.step.dependOn(&(try addShader(b, "textured_rectangle.vert.hlsl", "textured_rectangle.vert.spr")).step);
     main_tests.step.dependOn(&(try addShader(b, "plain_colour.frag.hlsl", "plain_colour.frag.spr")).step);
 
     const test_step = b.step("test", "Run library tests");

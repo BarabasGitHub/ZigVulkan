@@ -5,6 +5,6 @@ PositionTexture main( uint vertex_index : SV_VertexID )
 {
     PositionTexture output;
     output.position = CreateRectangleVertex(vertex_index, 0, 0.5, float2(1,0));
-    output.uv = CreateRectangleUV(vertex_index);
+    output.uv = CreateRectangleUV(vertex_index, float2(0,0), float2(1,1));
     return output;
 }

@@ -1,6 +1,12 @@
 const std = @import("std");
 usingnamespace @import("vulkan_general.zig");
 
+pub fn getImageMemoryRequirements(logical_device: Vk.Device, image: Vk.Image) Vk.c.VkMemoryRequirements {
+    var requirements: Vk.c.VkMemoryRequirements = undefined;
+    Vk.c.vkGetImageMemoryRequirements(logical_device, image, &requirements);
+    return requirements;
+}
+
 pub fn create2DImage(extent: Vk.c.VkExtent2D, format: Vk.c.VkFormat, usage: u32, logical_device: Vk.Device) !Vk.Image {
     const create_info = Vk.c.VkImageCreateInfo{
         .sType = .VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,

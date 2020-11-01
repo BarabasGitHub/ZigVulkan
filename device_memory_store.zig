@@ -2,6 +2,8 @@ const std = @import("std");
 const mem = std.mem;
 const testing = std.testing;
 const debug = std.debug;
+const zz = @import("ZigZag");
+const Data2D = zz.Containers.Data2D;
 
 usingnamespace @import("Utilities/handle_generator.zig");
 
@@ -11,6 +13,7 @@ usingnamespace @import("vulkan_instance.zig");
 usingnamespace @import("vulkan_image.zig");
 usingnamespace @import("vulkan_graphics_device.zig");
 usingnamespace @import("device_and_queues.zig");
+usingnamespace @import("physical_device.zig");
 
 usingnamespace @import("vulkan_general.zig");
 
@@ -55,12 +58,6 @@ fn createBuffer(logical_device: Vk.Device, size: u64, usage: Vk.c.VkBufferUsageF
 fn getBufferMemoryRequirements(logical_device: Vk.Device, buffer: Vk.Buffer) Vk.c.VkMemoryRequirements {
     var requirements: Vk.c.VkMemoryRequirements = undefined;
     Vk.c.vkGetBufferMemoryRequirements(logical_device, buffer, &requirements);
-    return requirements;
-}
-
-fn getImageMemoryRequirements(logical_device: Vk.Device, image: Vk.Image) Vk.c.VkMemoryRequirements {
-    var requirements: Vk.c.VkMemoryRequirements = undefined;
-    Vk.c.vkGetImageMemoryRequirements(logical_device, image, &requirements);
     return requirements;
 }
 
@@ -377,17 +374,16 @@ pub const DeviceMemoryStore = struct {
         return id;
     }
 
-    pub fn uploadImage2D(self: *Self, comptime DataType: type, image_id: ImageID, extent: Vk.c.VkExtent2D, data: []const DataType, transfer_queue: Queue, graphics_queue: Queue) !void {
-        std.debug.assert(extent.width * extent.height == data.len);
-        const data_size = data.len * @sizeOf(DataType);
+    pub fn uploadImage2D(self: *Self, comptime DataType: type, image_id: ImageID, data: Data2D(*const DataType), transfer_queue: Queue, graphics_queue: Queue) !void {
+        const extent = Vk.c.VkExtent2D{ .width = @intCast(u32, data.column_count), .height = @intCast(u32, data.row_count) };
+        const data_size = data.elementCount() * @sizeOf(DataType);
         if (data_size > self.staging_upload_buffer.mapped.len) {
             var size = self.staging_upload_buffer.mapped.len;
             while (size < data_size)
                 size += (size + 1) / 2;
             try self.resetStagingUploadBuffer(size);
         }
-        // TODO: When we get a real image class, copy without padding
-        std.mem.copy(u8, self.staging_upload_buffer.mapped[0..data_size], std.mem.sliceAsBytes(data)[0..data_size]);
+        Data2D(*DataType).fromBytes(@alignCast(@alignOf(DataType), self.staging_upload_buffer.mapped[0..data_size]), data.column_count, data.row_count, data.row_count * @sizeOf(DataType)).copyContentFrom(data);
         const image = self.image_id_infos.items[image_id.index].image;
         const transfer_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.transfer);
         const graphics_command_buffer = try createTemporaryCommandBuffer(self.logical_device, self.command_pools.graphics);
@@ -407,7 +403,7 @@ pub const DeviceMemoryStore = struct {
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.graphics, 1, &graphics_command_buffer);
     }
 
-    pub fn downloadImage2DAndDiscard(self: *Self, comptime DataType: type, image_id: ImageID, image_layout: Vk.c.VkImageLayout, image_access: Vk.c.VkAccessFlags, extent: Vk.c.VkExtent2D, graphics_queue: Queue) ![]const DataType {
+    pub fn downloadImage2DAndDiscard(self: *Self, comptime DataType: type, image_id: ImageID, image_layout: Vk.c.VkImageLayout, image_access: Vk.c.VkAccessFlags, extent: Vk.c.VkExtent2D, graphics_queue: Queue) !Data2D(*const DataType) {
         const data_size = extent.height * extent.width * @sizeOf(DataType);
         if (data_size > self.staging_download_buffer.mapped.len) {
             var size = self.staging_download_buffer.mapped.len;
@@ -429,7 +425,7 @@ pub const DeviceMemoryStore = struct {
         );
         try graphics_queue.waitIdle();
         Vk.c.vkFreeCommandBuffers(self.logical_device, self.command_pools.graphics, 1, &graphics_command_buffer);
-        return std.mem.bytesAsSlice(DataType, @alignCast(@alignOf(DataType), self.staging_download_buffer.mapped[0..data_size]));
+        return Data2D(*const DataType).fromSlice(std.mem.bytesAsSlice(DataType, @alignCast(@alignOf(DataType), self.staging_download_buffer.mapped[0..data_size])), extent.width, extent.height);
     }
 
     pub fn isValidImageId(self: Self, id: ImageID) bool {
@@ -985,6 +981,6 @@ test "Uploading a 2d image should succeed" {
     defer store.deinit();
 
     const image_id = try store.allocateImage2D(.{ .width = 32, .height = 32 }, Vk.c.VK_IMAGE_USAGE_TRANSFER_DST_BIT | Vk.c.VK_IMAGE_USAGE_SAMPLED_BIT, .VK_FORMAT_R8G8B8A8_UNORM);
-    const data = [_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32);
-    try store.uploadImage2D([4]u8, image_id, .{ .width = 32, .height = 32 }, &data, env.core_graphics_device_data.queues.transfer, env.core_graphics_device_data.queues.graphics);
+    const data = Data2D(*const [4]u8).fromSlice(&[_][4]u8{.{ 0x05, 0x80, 0xF0, 0xFF }} ** (32 * 32), 32, 32);
+    try store.uploadImage2D([4]u8, image_id, data, env.core_graphics_device_data.queues.transfer, env.core_graphics_device_data.queues.graphics);
 }

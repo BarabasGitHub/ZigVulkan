@@ -12,6 +12,7 @@ usingnamespace @import("device_and_queues.zig");
 usingnamespace @import("physical_device.zig");
 usingnamespace @import("swap_chain.zig");
 usingnamespace @import("descriptor_sets.zig");
+usingnamespace @import("command_buffer.zig");
 
 pub const CoreGraphicsDeviceData = struct {
     const Self = @This();
@@ -39,12 +40,6 @@ pub const CoreGraphicsDeviceData = struct {
         destroySurface(instance, self.surface);
     }
 };
-
-pub fn getPhysicalDeviceProperties(physical_device: Vk.PhysicalDevice) Vk.c.VkPhysicalDeviceProperties {
-    var device_properties: Vk.c.VkPhysicalDeviceProperties = undefined;
-    Vk.c.vkGetPhysicalDeviceProperties(physical_device, &device_properties);
-    return device_properties;
-}
 
 test "initializing and de-initializing CoreGraphicsDeviceData should succeed on my pc" {
     try glfw.init();
@@ -121,24 +116,6 @@ pub fn createRenderPass(display_image_format: Vk.c.VkFormat, logical_device: Vk.
 }
 
 pub const destroyRenderPass = Vk.c.vkDestroyRenderPass;
-
-pub fn createCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, frame_buffers: []Vk.Framebuffer, allocator: *mem.Allocator) ![]Vk.CommandBuffer {
-    const command_buffers = try allocator.alloc(Vk.CommandBuffer, frame_buffers.len);
-    errdefer allocator.free(command_buffers);
-    const allocInfo = Vk.c.VkCommandBufferAllocateInfo{
-        .sType = .VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-        .pNext = null,
-        .commandPool = command_pool,
-        .level = .VK_COMMAND_BUFFER_LEVEL_PRIMARY,
-        .commandBufferCount = @intCast(u32, command_buffers.len),
-    };
-    try checkVulkanResult(Vk.c.vkAllocateCommandBuffers(logical_device, &allocInfo, @ptrCast(*Vk.c.VkCommandBuffer, command_buffers.ptr)));
-    return command_buffers;
-}
-
-pub fn freeCommandBuffers(logical_device: Vk.Device, command_pool: Vk.CommandPool, command_buffers: []Vk.CommandBuffer) void {
-    Vk.c.vkFreeCommandBuffers(logical_device, command_pool, @intCast(u32, command_buffers.len), command_buffers.ptr);
-}
 
 const Semaphores = struct {
     image_available: Vk.Semaphore,
